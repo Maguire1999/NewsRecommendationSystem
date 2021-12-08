@@ -2,9 +2,7 @@ import os
 
 model_name = os.environ['MODEL_NAME'] if 'MODEL_NAME' in os.environ else 'NRMS'
 # Currently included model
-assert model_name in [
-    'NRMS', 'NAML', 'LSTUR', 'DKN', 'HiFiArk', 'TANR', 'Exp1'
-]
+assert model_name in ['NRMS', 'NAML', 'LSTUR', 'DKN', 'TANR']
 
 
 class BaseConfig():
@@ -15,6 +13,7 @@ class BaseConfig():
     num_batches_show_loss = 100  # Number of batchs to show loss
     # Number of batchs to check metrics on validation dataset
     num_batches_validate = 1000
+    save_checkpoint = True
     batch_size = 128
     learning_rate = 0.0001
     num_workers = 4  # Number of workers for data loading
@@ -78,29 +77,9 @@ class DKNConfig(BaseConfig):
     use_context = False
 
 
-class HiFiArkConfig(BaseConfig):
-    dataset_attributes = {"news": ['title'], "record": []}
-    # For CNN
-    num_filters = 300
-    window_size = 3
-    num_pooling_heads = 5
-    regularizer_loss_weight = 0.1
-
-
 class TANRConfig(BaseConfig):
     dataset_attributes = {"news": ['category', 'title'], "record": []}
     # For CNN
     num_filters = 300
     window_size = 3
     topic_classification_loss_weight = 0.1
-
-
-class Exp1Config(BaseConfig):
-    dataset_attributes = {
-        # TODO ['category', 'subcategory', 'title', 'abstract'],
-        "news": ['category', 'subcategory', 'title'],
-        "record": []
-    }
-    # For multi-head self-attention
-    num_attention_heads = 15
-    ensemble_factor = 1  # Not use ensemble since it's too expensive

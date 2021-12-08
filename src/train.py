@@ -3,7 +3,6 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset import BaseDataset
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import time
 import numpy as np
 from config import model_name
@@ -13,6 +12,8 @@ from pathlib import Path
 from evaluate import evaluate
 import importlib
 import datetime
+import copy
+import math
 
 try:
     Model = getattr(importlib.import_module(f"model.{model_name}"), model_name)
@@ -64,14 +65,56 @@ def latest_checkpoint(directory):
                         all_checkpoints[max(all_checkpoints.keys())])
 
 
+def dict2table(d, k_fn=str, v_fn=None, corner_name=''):
+    '''
+    Convert a nested dict to markdown table
+    '''
+    if v_fn is None:
+
+        def v_fn(x):
+            # Precision for abs(x):
+            # [0, 0.1)    6
+            # [0.1-1)    5
+            # [1-10)    4
+            # [10-100)    3
+            # [100-1000)    2
+            # [1000,oo)    1
+            precision = max(1, min(5 - math.ceil(math.log(abs(x), 10)), 6))
+            return f'{x:.{precision}f}'
+
+    def parse_header(d, depth=0):
+        assert depth in [0, 1], 'Only 1d or 2d dicts allowed'
+        if isinstance(list(d.values())[0], dict):
+            header = parse_header(list(d.values())[0], depth=depth + 1)
+            for v in d.values():
+                assert header == parse_header(v, depth=depth + 1)
+            return header
+        else:
+            return f"| {' | '.join([corner_name] * depth + list(map(k_fn, d.keys())))} |"
+
+    def parse_segmentation(d):
+        return ' --- '.join(['|'] * parse_header(d).count('|'))
+
+    def parse_content(d, accumulated_keys=[]):
+        if isinstance(list(d.values())[0], dict):
+            contents = []
+            for k, v in d.items():
+                contents.extend(parse_content(v, accumulated_keys + [k_fn(k)]))
+            return contents
+        else:
+            return [
+                f"| {' | '.join(accumulated_keys + list(map(v_fn, d.values())))} |"
+            ]
+
+    lines = [parse_header(d), parse_segmentation(d), *parse_content(d), '\n']
+    return '\n'.join(lines)
+
+
 def train():
     writer = SummaryWriter(
         log_dir=
         f"./runs/{model_name}/{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}"
     )
-
-    if not os.path.exists('checkpoint'):
-        os.makedirs('checkpoint')
 
     try:
         pretrained_word_embedding = torch.from_numpy(
@@ -97,18 +140,10 @@ def train():
         model = Model(config, pretrained_word_embedding,
                       pretrained_entity_embedding,
                       pretrained_context_embedding).to(device)
-    elif model_name == 'Exp1':
-        models = nn.ModuleList([
-            Model(config, pretrained_word_embedding).to(device)
-            for _ in range(config.ensemble_factor)
-        ])
     else:
         model = Model(config, pretrained_word_embedding).to(device)
 
-    if model_name != 'Exp1':
-        print(model)
-    else:
-        print(models[0])
+    print(model)
 
     dataset = BaseDataset('data/train/behaviors_parsed.tsv',
                           'data/train/news_parsed.tsv')
@@ -122,41 +157,19 @@ def train():
                    num_workers=config.num_workers,
                    drop_last=True,
                    pin_memory=True))
-    if model_name != 'Exp1':
-        criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(model.parameters(),
-                                     lr=config.learning_rate)
-    else:
-        criterion = nn.NLLLoss()
-        optimizers = [
-            torch.optim.Adam(model.parameters(), lr=config.learning_rate)
-            for model in models
-        ]
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     start_time = time.time()
     loss_full = []
     exhaustion_count = 0
     step = 0
     early_stopping = EarlyStopping()
 
-    checkpoint_dir = os.path.join('./checkpoint', model_name)
-    Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-
-    checkpoint_path = latest_checkpoint(checkpoint_dir)
-    if checkpoint_path is not None:
-        print(f"Load saved parameters in {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path)
-        early_stopping(checkpoint['early_stop_value'])
-        step = checkpoint['step']
-        if model_name != 'Exp1':
-            model.load_state_dict(checkpoint['model_state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            model.train()
-        else:
-            for model in models:
-                model.load_state_dict(checkpoint['model_state_dict'])
-                model.train()
-            for optimizer in optimizers:
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    best_checkpoint = copy.deepcopy(model.state_dict())
+    best_val_metrics = {}
+    if config.save_checkpoint:
+        checkpoint_dir = os.path.join('./checkpoint', model_name)
+        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     for i in tqdm(range(
             1,
@@ -183,21 +196,9 @@ def train():
             y_pred = model(minibatch["user"], minibatch["clicked_news_length"],
                            minibatch["candidate_news"],
                            minibatch["clicked_news"])
-        elif model_name == 'HiFiArk':
-            y_pred, regularizer_loss = model(minibatch["candidate_news"],
-                                             minibatch["clicked_news"])
         elif model_name == 'TANR':
             y_pred, topic_classification_loss = model(
                 minibatch["candidate_news"], minibatch["clicked_news"])
-        elif model_name == 'Exp1':
-            y_preds = [
-                model(minibatch["candidate_news"], minibatch["clicked_news"])
-                for model in models
-            ]
-            y_pred_averaged = torch.stack(
-                [F.softmax(y_pred, dim=1) for y_pred in y_preds],
-                dim=-1).mean(dim=-1)
-            y_pred = torch.log(y_pred_averaged)
         else:
             y_pred = model(minibatch["candidate_news"],
                            minibatch["clicked_news"])
@@ -205,15 +206,7 @@ def train():
         y = torch.zeros(len(y_pred)).long().to(device)
         loss = criterion(y_pred, y)
 
-        if model_name == 'HiFiArk':
-            if i % 10 == 0:
-                writer.add_scalar('Train/BaseLoss', loss.item(), step)
-                writer.add_scalar('Train/RegularizerLoss',
-                                  regularizer_loss.item(), step)
-                writer.add_scalar('Train/RegularizerBaseRatio',
-                                  regularizer_loss.item() / loss.item(), step)
-            loss += config.regularizer_loss_weight * regularizer_loss
-        elif model_name == 'TANR':
+        if model_name == 'TANR':
             if i % 10 == 0:
                 writer.add_scalar('Train/BaseLoss', loss.item(), step)
                 writer.add_scalar('Train/TopicClassificationLoss',
@@ -223,17 +216,9 @@ def train():
                     topic_classification_loss.item() / loss.item(), step)
             loss += config.topic_classification_loss_weight * topic_classification_loss
         loss_full.append(loss.item())
-        if model_name != 'Exp1':
-            optimizer.zero_grad()
-        else:
-            for optimizer in optimizers:
-                optimizer.zero_grad()
+        optimizer.zero_grad()
         loss.backward()
-        if model_name != 'Exp1':
-            optimizer.step()
-        else:
-            for optimizer in optimizers:
-                optimizer.step()
+        optimizer.step()
 
         if i % 10 == 0:
             writer.add_scalar('Train/Loss', loss.item(), step)
@@ -244,39 +229,34 @@ def train():
             )
 
         if i % config.num_batches_validate == 0:
-            (model if model_name != 'Exp1' else models[0]).eval()
-            val_auc, val_mrr, val_ndcg5, val_ndcg10 = evaluate(
-                model if model_name != 'Exp1' else models[0], './data/val',
-                config.num_workers, 200000)
-            (model if model_name != 'Exp1' else models[0]).train()
-            writer.add_scalar('Validation/AUC', val_auc, step)
-            writer.add_scalar('Validation/MRR', val_mrr, step)
-            writer.add_scalar('Validation/nDCG@5', val_ndcg5, step)
-            writer.add_scalar('Validation/nDCG@10', val_ndcg10, step)
+            model.eval()
+            metrics = evaluate(model, './data/val', config.num_workers, 200000)
+            model.train()
+            for metric, value in metrics.items():
+                writer.add_scalar(f'Validation/{metric}', value, step)
+
             tqdm.write(
-                f"Time {time_since(start_time)}, batches {i}, validation AUC: {val_auc:.4f}, validation MRR: {val_mrr:.4f}, validation nDCG@5: {val_ndcg5:.4f}, validation nDCG@10: {val_ndcg10:.4f}, "
+                f"Time {time_since(start_time)}, batches {i}, metrics\n{dict2table(metrics)}"
             )
 
-            early_stop, get_better = early_stopping(-val_auc)
+            early_stop, get_better = early_stopping(-metrics['AUC'])
             if early_stop:
                 tqdm.write('Early stop.')
                 break
             elif get_better:
-                try:
+                best_checkpoint = copy.deepcopy(model.state_dict())
+                best_val_metrics = copy.deepcopy(metrics)
+                if config.save_checkpoint:
                     torch.save(
-                        {
-                            'model_state_dict': (model if model_name != 'Exp1'
-                                                 else models[0]).state_dict(),
-                            'optimizer_state_dict':
-                            (optimizer if model_name != 'Exp1' else
-                             optimizers[0]).state_dict(),
-                            'step':
-                            step,
-                            'early_stop_value':
-                            -val_auc
-                        }, f"./checkpoint/{model_name}/ckpt-{step}.pth")
-                except OSError as error:
-                    print(f"OS error: {error}")
+                        model.state_dict(),
+                        os.path.join(checkpoint_dir, f"ckpt-{step}.pth"))
+
+    print(f'Best metrics on validation set\n{dict2table(best_val_metrics)}')
+
+    model.load_state_dict(best_checkpoint)
+    model.eval()
+    metrics = evaluate(model, './data/test', config.num_workers)
+    print(f'Metrics on test set\n{dict2table(metrics)}')
 
 
 def time_since(since):

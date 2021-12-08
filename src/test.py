@@ -268,8 +268,17 @@ def evaluate(model, directory, num_workers, max_count=sys.maxsize):
         results = pool.map(calculate_single_user_metric, tasks)
 
     aucs, mrrs, ndcg5s, ndcg10s = np.array(results).T
-    return np.nanmean(aucs), np.nanmean(mrrs), np.nanmean(ndcg5s), np.nanmean(
-        ndcg10s)
+
+    return {
+        'AUC': np.nanmean(aucs),
+        'MRR': np.nanmean(mrrs),
+        'nDCG@5': np.nanmean(ndcg5s),
+        'nDCG@10': np.nanmean(ndcg10s)
+    }
+    # TODO:
+    # return dict(
+    #     zip(['AUC', 'MRR', 'nDCG@5', 'nDCG@10'],
+    #         np.nanmean(np.array(results), axis=1)))
 
 
 if __name__ == '__main__':
@@ -285,10 +294,7 @@ if __name__ == '__main__':
         exit()
     print(f"Load saved parameters in {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint)
     model.eval()
-    auc, mrr, ndcg5, ndcg10 = evaluate(model, './data/test',
-                                       config.num_workers)
-    print(
-        f'AUC: {auc:.4f}\nMRR: {mrr:.4f}\nnDCG@5: {ndcg5:.4f}\nnDCG@10: {ndcg10:.4f}'
-    )
+    metrics = evaluate(model, './data/test', config.num_workers)
+    print(f'Metrics on test set\n{dict2table(metrics)}')

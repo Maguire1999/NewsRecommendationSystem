@@ -96,8 +96,9 @@ class DKN(torch.nn.Module):
             click_probability: 0-dim tensor
         """
         # candidate_size, len(window_sizes) * num_filters
-        user_vector = self.attention(candidate_news_vector,
-                                     clicked_news_vector.expand(candidate_news_vector.size(0), -1, -1))
+        user_vector = self.attention(
+            candidate_news_vector,
+            clicked_news_vector.expand(candidate_news_vector.size(0), -1, -1))
         # candidate_size
         click_probability = self.click_predictor(candidate_news_vector,
                                                  user_vector)
