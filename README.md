@@ -12,60 +12,101 @@ The repository currently includes the following models.
 
 ## Get started
 
-Basic setup.
+### Install the package
+
+Install from <https://pypi.org/>.
 
 ```bash
-git clone https://github.com/yusanshi/NewsRecommendation
-cd NewsRecommendation
-pip3 install -r requirements.txt
+pip install news-recommendation
 ```
 
-Download and preprocess the data.
+Or install it manually.
 
 ```bash
-mkdir data && cd data
-# Download GloVe pre-trained word embedding
+git clone https://github.com/yusanshi/news-recommendation.git
+cd news-recommendation
+pip install .
+```
+
+### Download and process the datasets
+
+Create an empty directory as our working directory.
+```bash
+cd ~
+mkdir whatever-name-you-like && cd "$_"
+export ROOT_DIRECTORY=`pwd`
+```
+
+Download and unzip GloVe pre-trained word embedding.
+
+```bash
+cd $ROOT_DIRECTORY
+mkdir -p data/raw/glove && cd "$_"
 wget https://nlp.stanford.edu/data/glove.840B.300d.zip
 sudo apt install unzip
-unzip glove.840B.300d.zip -d glove
+unzip glove.840B.300d.zip
 rm glove.840B.300d.zip
+```
 
-# Download MIND dataset
-# By downloading the dataset, you agree to the [Microsoft Research License Terms](https://go.microsoft.com/fwlink/?LinkID=206977). For more detail about the dataset, see https://msnews.github.io/.
+Download and process MIND-small dataset. Note MIND Small doesn't have a test set, so we just copy the validation set as test set :)
 
-# Uncomment the following lines to use the MIND Large dataset (Note MIND Large test set doesn't have labels, see #11)
-# wget https://mind201910small.blob.core.windows.net/release/MINDlarge_train.zip https://mind201910small.blob.core.windows.net/release/MINDlarge_dev.zip https://mind201910small.blob.core.windows.net/release/MINDlarge_test.zip
-# unzip MINDlarge_train.zip -d train
-# unzip MINDlarge_dev.zip -d val
-# unzip MINDlarge_test.zip -d test
-# rm MINDlarge_*.zip
-
-# Uncomment the following lines to use the MIND Small dataset (Note MIND Small doesn't have a test set, so we just copy the validation set as test set :)
-wget https://mind201910small.blob.core.windows.net/release/MINDsmall_train.zip https://mind201910small.blob.core.windows.net/release/MINDsmall_dev.zip
+```bash
+cd $ROOT_DIRECTORY
+mkdir -p data/raw/mind-small && cd "$_"
+wget https://mind201910small.blob.core.windows.net/release/MINDsmall_train.zip \
+ https://mind201910small.blob.core.windows.net/release/MINDsmall_dev.zip
 unzip MINDsmall_train.zip -d train
 unzip MINDsmall_dev.zip -d val
 cp -r val test # MIND Small has no test set :)
 rm MINDsmall_*.zip
 
-# Preprocess data into appropriate format
-cd ..
-python3 src/data_preprocess.py
-# Remember you shoud modify `num_*` in `src/config.py` by the output of `src/data_preprocess.py`
+cd $ROOT_DIRECTORY
+python -m news_recommendation.data_preprocess --source_dir=$ROOT_DIRECTORY/data/raw/mind-small \
+ --target_dir=$ROOT_DIRECTORY/data/mind-small \
+ --dateset=mind-small \
+ --glove_path=$ROOT_DIRECTORY/data/raw/glove/glove.840B.300d.txt
 ```
 
-Modify `src/config.py` to select target model. The configuration file is organized into general part (which is applied to all models) and model-specific part (that some models not have).
-
+Download and process MIND-large dataset. Note MIND Large test set doesn't have labels, see #11.
 ```bash
-vim src/config.py
+cd $ROOT_DIRECTORY
+mkdir -p data/raw/mind-large && cd "$_"
+wget https://mind201910small.blob.core.windows.net/release/MINDlarge_train.zip \
+ https://mind201910small.blob.core.windows.net/release/MINDlarge_dev.zip \
+ https://mind201910small.blob.core.windows.net/release/MINDlarge_test.zip
+unzip MINDlarge_train.zip -d train
+unzip MINDlarge_dev.zip -d val
+unzip MINDlarge_test.zip -d test
+rm MINDlarge_*.zip
+
+cd $ROOT_DIRECTORY
+python -m news_recommendation.data_preprocess --source_dir=$ROOT_DIRECTORY/data/raw/mind-large \
+ --target_dir=$ROOT_DIRECTORY/data/mind-large \
+ --dateset=mind-large \
+ --glove_path=$ROOT_DIRECTORY/data/raw/glove/glove.840B.300d.txt
 ```
+
+Download and process Adressa 1week dataset.
+```bash
+cd $ROOT_DIRECTORY
+mkdir -p data/raw/adressa-1week && cd "$_"
+wget ...
+
+
+cd $ROOT_DIRECTORY
+python -m news_recommendation.data_preprocess --source_dir=$ROOT_DIRECTORY/data/raw/adressa-1week \
+ --target_dir=$ROOT_DIRECTORY/data/adressa-1week \
+ --dateset=adressa-1week
+```
+
 
 Run.
 
 ```bash
 # Train and save checkpoint into `checkpoint/{model_name}/` directory
-python3 src/train.py
+python -m news_recommendation.train
 # Load latest checkpoint and evaluate on the test set
-python3 src/evaluate.py
+python -m news_recommendation.evaluate
 ```
 
 You can visualize metrics with TensorBoard.
@@ -78,7 +119,7 @@ tensorboard --logdir=runs/{model_name}
 # for a specific model
 ```
 
-> Tip: by adding `REMARK` environment variable, you can make the runs name in TensorBoard more meaningful. For example, `REMARK=num-filters-300-window-size-5 python3 src/train.py`.
+> Tip: by adding `REMARK` environment variable, you can make the runs name in TensorBoard more meaningful. For example, `REMARK=num-filters-300-window-size-5 python -m news_recommendation.train`.
 
 ## Results
 
@@ -92,7 +133,7 @@ tensorboard --logdir=runs/{model_name}
 
 Checkpoints: <https://drive.google.com/open?id=TODO>
 
-You can verify the results by simply downloading them and running `MODEL_NAME=XXXX python3 src/evaluate.py`.
+You can verify the results by simply downloading them and running `MODEL_NAME=XXXX python -m news_recommendation.evaluate`.
 
 ## Credits
 

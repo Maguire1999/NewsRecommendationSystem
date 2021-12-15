@@ -1,8 +1,5 @@
 from config import model_name
 import pandas as pd
-import swifter
-import json
-import math
 from tqdm import tqdm
 from os import path
 from pathlib import Path
@@ -11,12 +8,7 @@ from nltk.tokenize import word_tokenize
 import numpy as np
 import csv
 import importlib
-
-try:
-    config = getattr(importlib.import_module('config'), f"{model_name}Config")
-except AttributeError:
-    print(f"{model_name} not included!")
-    exit()
+import argparse
 
 
 def parse_behaviors(source, target, user2int_path):
@@ -81,29 +73,25 @@ def parse_behaviors(source, target, user2int_path):
         columns=['user', 'clicked_news', 'candidate_news', 'clicked'])
 
 
-def parse_news(source, target, category2int_path, word2int_path,
-               entity2int_path, mode):
+def parse_news(source, target, category2int_path, word2int_path, mode):
     """
     Parse news for training set and test set
     Args:
         source: source news file
         target: target news file
         if mode == 'train':
-            category2int_path, word2int_path, entity2int_path: Path to save
+            category2int_path, word2int_path: Path to save
         elif mode == 'test':
-            category2int_path, word2int_path, entity2int_path: Path to load from
+            category2int_path, word2int_path: Path to load from
     """
     print(f"Parse {source}")
-    news = pd.read_table(source,
-                         header=None,
-                         usecols=[0, 1, 2, 3, 4, 6, 7],
-                         quoting=csv.QUOTE_NONE,
-                         names=[
-                             'id', 'category', 'subcategory', 'title',
-                             'abstract', 'title_entities', 'abstract_entities'
-                         ])  # TODO try to avoid csv.QUOTE_NONE
-    news.title_entities.fillna('[]', inplace=True)
-    news.abstract_entities.fillna('[]', inplace=True)
+    news = pd.read_table(
+        source,
+        header=None,
+        usecols=[0, 1, 2, 3, 4],
+        quoting=csv.QUOTE_NONE,
+        names=['id', 'category', 'subcategory', 'title',
+               'abstract'])  # TODO try to avoid csv.QUOTE_NONE
     news.fillna(' ', inplace=True)
 
     def parse_row(row):
@@ -116,25 +104,10 @@ def parse_news(source, target, category2int_path, word2int_path,
             [0] * config.num_words_title, [0] * config.num_words_abstract
         ]
 
-        # Calculate local entity map (map lower single word to entity)
-        local_entity_map = {}
-        for e in json.loads(row.title_entities):
-            if e['Confidence'] > config.entity_confidence_threshold and e[
-                    'WikidataId'] in entity2int:
-                for x in ' '.join(e['SurfaceForms']).lower().split():
-                    local_entity_map[x] = entity2int[e['WikidataId']]
-        for e in json.loads(row.abstract_entities):
-            if e['Confidence'] > config.entity_confidence_threshold and e[
-                    'WikidataId'] in entity2int:
-                for x in ' '.join(e['SurfaceForms']).lower().split():
-                    local_entity_map[x] = entity2int[e['WikidataId']]
-
         try:
             for i, w in enumerate(word_tokenize(row.title.lower())):
                 if w in word2int:
                     new_row[3][i] = word2int[w]
-                    if w in local_entity_map:
-                        new_row[5][i] = local_entity_map[w]
         except IndexError:
             pass
 
@@ -142,23 +115,17 @@ def parse_news(source, target, category2int_path, word2int_path,
             for i, w in enumerate(word_tokenize(row.abstract.lower())):
                 if w in word2int:
                     new_row[4][i] = word2int[w]
-                    if w in local_entity_map:
-                        new_row[6][i] = local_entity_map[w]
         except IndexError:
             pass
 
-        return pd.Series(new_row,
-                         index=[
-                             'id', 'category', 'subcategory', 'title',
-                             'abstract', 'title_entities', 'abstract_entities'
-                         ])
+        return pd.Series(
+            new_row,
+            index=['id', 'category', 'subcategory', 'title', 'abstract'])
 
     if mode == 'train':
         category2int = {}
         word2int = {}
         word2freq = {}
-        entity2int = {}
-        entity2freq = {}
 
         for row in news.itertuples(index=False):
             if row.category not in category2int:
@@ -177,29 +144,9 @@ def parse_news(source, target, category2int_path, word2int_path,
                 else:
                     word2freq[w] += 1
 
-            for e in json.loads(row.title_entities):
-                times = len(e['OccurrenceOffsets']) * e['Confidence']
-                if times > 0:
-                    if e['WikidataId'] not in entity2freq:
-                        entity2freq[e['WikidataId']] = times
-                    else:
-                        entity2freq[e['WikidataId']] += times
-
-            for e in json.loads(row.abstract_entities):
-                times = len(e['OccurrenceOffsets']) * e['Confidence']
-                if times > 0:
-                    if e['WikidataId'] not in entity2freq:
-                        entity2freq[e['WikidataId']] = times
-                    else:
-                        entity2freq[e['WikidataId']] += times
-
         for k, v in word2freq.items():
             if v >= config.word_freq_threshold:
                 word2int[k] = len(word2int) + 1
-
-        for k, v in entity2freq.items():
-            if v >= config.entity_freq_threshold:
-                entity2int[k] = len(entity2int) + 1
 
         parsed_news = news.swifter.apply(parse_row, axis=1)
         parsed_news.to_csv(target, sep='\t', index=False)
@@ -220,20 +167,11 @@ def parse_news(source, target, category2int_path, word2int_path,
             f'Please modify `num_words` in `src/config.py` into 1 + {len(word2int)}'
         )
 
-        pd.DataFrame(entity2int.items(),
-                     columns=['entity', 'int']).to_csv(entity2int_path,
-                                                       sep='\t',
-                                                       index=False)
-        print(
-            f'Please modify `num_entities` in `src/config.py` into 1 + {len(entity2int)}'
-        )
-
     elif mode == 'test':
         category2int = dict(pd.read_table(category2int_path).values.tolist())
         # na_filter=False is needed since nan is also a valid word
         word2int = dict(
             pd.read_table(word2int_path, na_filter=False).values.tolist())
-        entity2int = dict(pd.read_table(entity2int_path).values.tolist())
 
         parsed_news = news.swifter.apply(parse_row, axis=1)
         parsed_news.to_csv(target, sep='\t', index=False)
@@ -284,33 +222,26 @@ def generate_word_embedding(source, target, word2int_path):
     )
 
 
-def transform_entity_embedding(source, target, entity2int_path):
-    """
-    Args:
-        source: path of embedding file
-        target: path of transformed embedding file in numpy format
-        entity2int_path
-    """
-    entity_embedding = pd.read_table(source, header=None)
-    entity_embedding['vector'] = entity_embedding.iloc[:,
-                                                       1:101].values.tolist()
-    entity_embedding = entity_embedding[[0, 'vector'
-                                         ]].rename(columns={0: "entity"})
-
-    entity2int = pd.read_table(entity2int_path)
-    merged_df = pd.merge(entity_embedding, entity2int,
-                         on='entity').sort_values('int')
-    entity_embedding_transformed = np.random.normal(
-        size=(len(entity2int) + 1, config.entity_embedding_dim))
-    for row in merged_df.itertuples(index=False):
-        entity_embedding_transformed[row.int] = row.vector
-    np.save(target, entity_embedding_transformed)
-
-
 if __name__ == '__main__':
-    train_dir = './data/train'
-    val_dir = './data/val'
-    test_dir = './data/test'
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--source_dir',
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        '--target_dir',
+        type=str,
+        required=True,
+    )
+    parser.add_argument('--dateset',
+                        type=str,
+                        choices=[
+                            'mind-small', 'mind-large', 'adressa-1week',
+                            'adressa-10weeks'
+                        ],
+                        required=True)
+    parser.add_argument('--glove_path', type=str)
 
     print('Process data for training')
 
@@ -324,7 +255,6 @@ if __name__ == '__main__':
                path.join(train_dir, 'news_parsed.tsv'),
                path.join(train_dir, 'category2int.tsv'),
                path.join(train_dir, 'word2int.tsv'),
-               path.join(train_dir, 'entity2int.tsv'),
                mode='train')
 
     print('Generate word embedding')
@@ -333,12 +263,6 @@ if __name__ == '__main__':
         path.join(train_dir, 'pretrained_word_embedding.npy'),
         path.join(train_dir, 'word2int.tsv'))
 
-    print('Transform entity embeddings')
-    transform_entity_embedding(
-        path.join(train_dir, 'entity_embedding.vec'),
-        path.join(train_dir, 'pretrained_entity_embedding.npy'),
-        path.join(train_dir, 'entity2int.tsv'))
-
     print('\nProcess data for validation')
 
     print('Parse news')
@@ -346,7 +270,6 @@ if __name__ == '__main__':
                path.join(val_dir, 'news_parsed.tsv'),
                path.join(train_dir, 'category2int.tsv'),
                path.join(train_dir, 'word2int.tsv'),
-               path.join(train_dir, 'entity2int.tsv'),
                mode='test')
 
     print('\nProcess data for test')
@@ -356,5 +279,4 @@ if __name__ == '__main__':
                path.join(test_dir, 'news_parsed.tsv'),
                path.join(train_dir, 'category2int.tsv'),
                path.join(train_dir, 'word2int.tsv'),
-               path.join(train_dir, 'entity2int.tsv'),
                mode='test')

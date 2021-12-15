@@ -17,10 +17,9 @@ except AttributeError:
 class BaseDataset(Dataset):
     def __init__(self, behaviors_path, news_path):
         super(BaseDataset, self).__init__()
-        assert all(attribute in [
-            'category', 'subcategory', 'title', 'abstract', 'title_entities',
-            'abstract_entities'
-        ] for attribute in config.dataset_attributes['news'])
+        assert all(
+            attribute in ['category', 'subcategory', 'title', 'abstract']
+            for attribute in config.dataset_attributes['news'])
         assert all(attribute in ['user', 'clicked_news_length']
                    for attribute in config.dataset_attributes['record'])
 
@@ -31,9 +30,8 @@ class BaseDataset(Dataset):
             usecols=['id'] + config.dataset_attributes['news'],
             converters={
                 attribute: literal_eval
-                for attribute in set(config.dataset_attributes['news']) & set([
-                    'title', 'abstract', 'title_entities', 'abstract_entities'
-                ])
+                for attribute in set(config.dataset_attributes['news'])
+                & set(['title', 'abstract'])
             })
         self.news_id2int = {x: i for i, x in enumerate(self.news_parsed.index)}
         self.news2dict = self.news_parsed.to_dict('index')
@@ -45,9 +43,7 @@ class BaseDataset(Dataset):
             'category': 0,
             'subcategory': 0,
             'title': [0] * config.num_words_title,
-            'abstract': [0] * config.num_words_abstract,
-            'title_entities': [0] * config.num_words_title,
-            'abstract_entities': [0] * config.num_words_abstract
+            'abstract': [0] * config.num_words_abstract
         }
         for key in padding_all.keys():
             padding_all[key] = torch.tensor(padding_all[key])
