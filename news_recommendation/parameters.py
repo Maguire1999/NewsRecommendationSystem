@@ -1,4 +1,5 @@
 import argparse
+import pandas as pd
 from distutils.util import strtobool
 
 
@@ -13,7 +14,7 @@ def parse_args():
                         type=str,
                         default='NRMS',
                         choices=['NRMS', 'NAML', 'LSTUR', 'TANR'])
-    parser.add_argument('--dateset',
+    parser.add_argument('--dataset',
                         type=str,
                         default='mind-small',
                         choices=[
@@ -43,12 +44,13 @@ def parse_args():
                         help='Number of sampled click history for each user')
     parser.add_argument('--num_words_title', type=int, default=20)
     parser.add_argument('--num_words_abstract', type=int, default=50)
-    parser.add_argument('--word_freq_threshold', type=int, default=1)
+    parser.add_argument('--word_frequency_threshold', type=int,
+                        default=1)  # TODO
     parser.add_argument('--negative_sampling_ratio', type=int, default=2)
     parser.add_argument('--dropout_probability', type=float, default=0.2)
-    parser.add_argument('--num_words', type=int, default=70976)
-    parser.add_argument('--num_categories', type=int, default=275)
-    parser.add_argument('--num_users', type=int, default=50001)
+    parser.add_argument('--num_words', type=int, default=None)
+    parser.add_argument('--num_categories', type=int, default=None)
+    parser.add_argument('--num_users', type=int, default=None)
     parser.add_argument('--word_embedding_dim', type=int, default=300)
     parser.add_argument('--category_embedding_dim', type=int, default=100)
     parser.add_argument('--query_vector_dim', type=int, default=200)
@@ -63,7 +65,7 @@ def parse_args():
     parser.add_argument('--topic_classification_loss_weight',
                         type=float,
                         default=0.1)
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     dataset_attributes = {
         'NRMS': {
@@ -83,6 +85,20 @@ def parse_args():
             'record': []
         }
     }
-
     args.dataset_attributes = dataset_attributes[args.model_name]
+
+    try:
+        if args.num_words is None:
+            args.num_words = len(
+                pd.read_table(f'data/{args.dataset}/word2int.tsv')) + 1
+        if args.num_categories is None:
+            args.num_categories = len(
+                pd.read_table(f'data/{args.dataset}/category2int.tsv')) + 1
+        if args.num_users is None:
+            args.num_users = len(
+                pd.read_table(f'data/{args.dataset}/user2int.tsv')) + 1
+    except FileNotFoundError:
+        # Suppress the error if is running data processing
+        pass
+
     return args
