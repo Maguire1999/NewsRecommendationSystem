@@ -1,51 +1,49 @@
 import torch
-from model.NRMS.news_encoder import NewsEncoder
-from model.NRMS.user_encoder import UserEncoder
-from model.general.click_predictor.dot_product import DotProductClickPredictor
+from .news_encoder import NewsEncoder
+from .user_encoder import UserEncoder
+from ..general.click_predictor.dot_product import DotProductClickPredictor
+from ..general.trainer.centralized import CentralizedModelTrainer
+from news_recommendation.parameters import parse_args
+args = parse_args()
 
 
-class NRMS(torch.nn.Module):
+class NRMS(torch.nn.Module, CentralizedModelTrainer):
     """
     NRMS network.
-    Input 1 + K candidate news and a list of user clicked news, produce the click probability.
     """
-    def __init__(self, config, pretrained_word_embedding=None):
-        super(NRMS, self).__init__()
-        self.config = config
-        self.news_encoder = NewsEncoder(config, pretrained_word_embedding)
-        self.user_encoder = UserEncoder(config)
+    def __init__(self, pretrained_word_embedding=None):
+        super().__init__()
+        self.news_encoder = NewsEncoder(pretrained_word_embedding)
+        self.user_encoder = UserEncoder()
         self.click_predictor = DotProductClickPredictor()
+        super().init(self)
 
-    def forward(self, candidate_news, clicked_news):
+    def forward(self, history, positive_candidate, negative_candidates):
         """
         Args:
-            candidate_news:
-                [
-                    {
-                        "title": batch_size * num_words_title
-                    } * (1 + K)
-                ]
-            clicked_news:
-                [
-                    {
-                        "title":batch_size * num_words_title
-                    } * num_clicked_news_a_user
-                ]
+
         Returns:
           click_probability: batch_size, 1 + K
         """
-        # batch_size, 1 + K, word_embedding_dim
-        candidate_news_vector = torch.stack(
-            [self.news_encoder(x) for x in candidate_news], dim=1)
-        # batch_size, num_clicked_news_a_user, word_embedding_dim
-        clicked_news_vector = torch.stack(
-            [self.news_encoder(x) for x in clicked_news], dim=1)
+        vector = self.news_encoder(
+            torch.cat((history, positive_candidate, negative_candidates),
+                      dim=0))
+        history_vector, candidates_vector = vector.split(
+            (history.shape[0],
+             positive_candidate.shape[0] + negative_candidates.shape[0]),
+            dim=0)
+        history_vector = history_vector.view(-1, args.num_history,
+                                             args.word_embedding_dim)
+        candidates_vector = candidates_vector.view(
+            -1, 1 + args.negative_sampling_ratio, args.word_embedding_dim)
+
         # batch_size, word_embedding_dim
-        user_vector = self.user_encoder(clicked_news_vector)
+        user_vector = self.user_encoder(history_vector)
         # batch_size, 1 + K
-        click_probability = self.click_predictor(candidate_news_vector,
+        click_probability = self.click_predictor(candidates_vector,
                                                  user_vector)
-        return click_probability
+        loss = self.backward(click_probability)
+        return loss
 
     def get_news_vector(self, news):
         """
@@ -60,15 +58,15 @@ class NRMS(torch.nn.Module):
         # batch_size, word_embedding_dim
         return self.news_encoder(news)
 
-    def get_user_vector(self, clicked_news_vector):
+    def get_user_vector(self, history_vector):
         """
         Args:
-            clicked_news_vector: batch_size, num_clicked_news_a_user, word_embedding_dim
+            history_vector: batch_size, num_history, word_embedding_dim
         Returns:
             (shape) batch_size, word_embedding_dim
         """
         # batch_size, word_embedding_dim
-        return self.user_encoder(clicked_news_vector)
+        return self.user_encoder(history_vector)
 
     def get_prediction(self, news_vector, user_vector):
         """

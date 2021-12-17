@@ -3,7 +3,7 @@ import torch
 
 class DotProductClickPredictor(torch.nn.Module):
     def __init__(self):
-        super(DotProductClickPredictor, self).__init__()
+        super().__init__()
 
     def forward(self, candidate_news_vector, user_vector):
         """

@@ -7,13 +7,24 @@ def str2bool(x):
     return bool(strtobool(x))
 
 
+# TODO recheck all the parameters
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model_name',
+    parser.add_argument('--model',
                         type=str,
                         default='NRMS',
                         choices=['NRMS', 'NAML', 'LSTUR', 'TANR'])
+    parser.add_argument('--loss',
+                        type=str,
+                        default='CE',
+                        choices=['BCE', 'CE'])
+    parser.add_argument('--optimizer',
+                        type=str,
+                        default='Adam',
+                        choices=['Adam', 'SGD'])
     parser.add_argument('--dataset',
                         type=str,
                         default='mind-small',
@@ -21,7 +32,7 @@ def parse_args():
                             'mind-small', 'mind-large', 'adressa-1week',
                             'adressa-10weeks'
                         ])
-    parser.add_argument('--num_epochs', type=int, default=2)
+    parser.add_argument('--num_epochs', type=int, default=3)
     parser.add_argument('--num_batches_show_loss',
                         type=int,
                         default=100,
@@ -32,13 +43,15 @@ def parse_args():
         default=1000,
         help='Number of batchs to check metrics on validation dataset')
     parser.add_argument('--save_checkpoint', type=str2bool, default=True)
+    parser.add_argument('--cache_dataset', type=str2bool, default=True)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
     parser.add_argument('--num_workers',
                         type=int,
-                        default=4,
-                        help='Number of workers for data loading')
-    parser.add_argument('--num_clicked_news_a_user',
+                        default=0,
+                        help='Number of workers for data loading'
+                        )  # TODO a non-zero value will slow down
+    parser.add_argument('--num_history',
                         type=int,
                         default=50,
                         help='Number of sampled click history for each user')
@@ -46,7 +59,7 @@ def parse_args():
     parser.add_argument('--num_words_abstract', type=int, default=50)
     parser.add_argument('--word_frequency_threshold', type=int,
                         default=1)  # TODO
-    parser.add_argument('--negative_sampling_ratio', type=int, default=2)
+    parser.add_argument('--negative_sampling_ratio', type=int, default=4)
     parser.add_argument('--dropout_probability', type=float, default=0.2)
     parser.add_argument('--num_words', type=int, default=None)
     parser.add_argument('--num_categories', type=int, default=None)
@@ -65,27 +78,37 @@ def parse_args():
     parser.add_argument('--topic_classification_loss_weight',
                         type=float,
                         default=0.1)
+    parser.add_argument('--log_path', type=str, default='./log/')
+    parser.add_argument('--checkpoint_path', type=str, default='./checkpoint/')
+    parser.add_argument('--tensorboard_runs_path', type=str, default='./runs/')
+    parser.add_argument('--cache_path', type=str, default='./cache/')
     args, _ = parser.parse_known_args()
 
     dataset_attributes = {
         'NRMS': {
             'news': ['title'],
-            'record': []
+            'behaviors':
+            ['history', 'positive_candidate', 'negative_candidates']
         },
         'NAML': {
             'news': ['category', 'subcategory', 'title', 'abstract'],
-            'record': []
+            'behaviors':
+            ['history', 'positive_candidate', 'negative_candidates']
         },
         'LSTUR': {
             'news': ['category', 'subcategory', 'title'],
-            'record': ['user', 'clicked_news_length']
+            'behaviors': [
+                'user', 'history', 'history_length', 'positive_candidate',
+                'negative_candidates'
+            ]
         },
         'TANR': {
             'news': ['category', 'title'],
-            'record': []
+            'behaviors':
+            ['history', 'positive_candidate', 'negative_candidates']
         }
     }
-    args.dataset_attributes = dataset_attributes[args.model_name]
+    args.dataset_attributes = dataset_attributes[args.model]
 
     try:
         if args.num_words is None:

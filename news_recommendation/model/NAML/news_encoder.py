@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.general.attention.additive import AdditiveAttention
+from ..general.attention.additive import AdditiveAttention
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -9,7 +9,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class TextEncoder(torch.nn.Module):
     def __init__(self, word_embedding, word_embedding_dim, num_filters,
                  window_size, query_vector_dim, dropout_probability):
-        super(TextEncoder, self).__init__()
+        super().__init__()
         self.word_embedding = word_embedding
         self.dropout_probability = dropout_probability
         self.CNN = nn.Conv2d(1,
@@ -39,7 +39,7 @@ class TextEncoder(torch.nn.Module):
 
 class ElementEncoder(torch.nn.Module):
     def __init__(self, embedding, linear_input_dim, linear_output_dim):
-        super(ElementEncoder, self).__init__()
+        super().__init__()
         self.embedding = embedding
         self.linear = nn.Linear(linear_input_dim, linear_output_dim)
 
@@ -49,39 +49,37 @@ class ElementEncoder(torch.nn.Module):
 
 class NewsEncoder(torch.nn.Module):
     def __init__(self, config, pretrained_word_embedding):
-        super(NewsEncoder, self).__init__()
+        super().__init__()
         self.config = config
         if pretrained_word_embedding is None:
-            word_embedding = nn.Embedding(config.num_words,
-                                          config.word_embedding_dim,
+            word_embedding = nn.Embedding(args.num_words,
+                                          args.word_embedding_dim,
                                           padding_idx=0)
         else:
             word_embedding = nn.Embedding.from_pretrained(
                 pretrained_word_embedding, freeze=False, padding_idx=0)
-        assert len(config.dataset_attributes['news']) > 0
+        assert len(args.dataset_attributes['news']) > 0
         text_encoders_candidates = ['title', 'abstract']
         self.text_encoders = nn.ModuleDict({
-            name:
-            TextEncoder(word_embedding, config.word_embedding_dim,
-                        config.num_filters, config.window_size,
-                        config.query_vector_dim, config.dropout_probability)
-            for name in (set(config.dataset_attributes['news'])
+            name: TextEncoder(word_embedding, args.word_embedding_dim,
+                              args.num_filters, args.window_size,
+                              args.query_vector_dim, args.dropout_probability)
+            for name in (set(args.dataset_attributes['news'])
                          & set(text_encoders_candidates))
         })
-        category_embedding = nn.Embedding(config.num_categories,
-                                          config.category_embedding_dim,
+        category_embedding = nn.Embedding(args.num_categories,
+                                          args.category_embedding_dim,
                                           padding_idx=0)
         element_encoders_candidates = ['category', 'subcategory']
         self.element_encoders = nn.ModuleDict({
-            name:
-            ElementEncoder(category_embedding, config.category_embedding_dim,
-                           config.num_filters)
-            for name in (set(config.dataset_attributes['news'])
+            name: ElementEncoder(category_embedding,
+                                 args.category_embedding_dim, args.num_filters)
+            for name in (set(args.dataset_attributes['news'])
                          & set(element_encoders_candidates))
         })
-        if len(config.dataset_attributes['news']) > 1:
-            self.final_attention = AdditiveAttention(config.query_vector_dim,
-                                                     config.num_filters)
+        if len(args.dataset_attributes['news']) > 1:
+            self.final_attention = AdditiveAttention(args.query_vector_dim,
+                                                     args.num_filters)
 
     def forward(self, news):
         """

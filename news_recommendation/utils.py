@@ -1,3 +1,13 @@
+import time
+import os
+import logging
+import coloredlogs
+import datetime
+
+from news_recommendation.parameters import parse_args
+args = parse_args()
+
+
 def time_since(since):
     """
     Format elapsed time string.
@@ -5,6 +15,23 @@ def time_since(since):
     now = time.time()
     elapsed_time = now - since
     return time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
+
+
+def create_logger():
+    logger = logging.getLogger(__name__)
+    coloredlogs.install(level='DEBUG',
+                        logger=logger,
+                        fmt='%(asctime)s %(levelname)s %(message)s')
+    log_dir = os.path.join(args.log_path, f'{args.model}-{args.dataset}')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file_path = os.path.join(
+        log_dir,
+        f"{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}.txt"
+    )
+    logger.info(f'Check {log_file_path} for the log of this run')
+    file_hander = logging.FileHandler(log_file_path)
+    logger.addHandler(file_hander)
+    return logger
 
 
 def dict2table(d, k_fn=str, v_fn=None, corner_name=''):

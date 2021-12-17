@@ -14,7 +14,7 @@ class AdditiveAttention(torch.nn.Module):
                  writer=None,
                  tag=None,
                  names=None):
-        super(AdditiveAttention, self).__init__()
+        super().__init__()
         self.linear = nn.Linear(candidate_vector_dim, query_vector_dim)
         self.attention_query_vector = nn.Parameter(
             torch.empty(query_vector_dim).uniform_(-0.1, 0.1))

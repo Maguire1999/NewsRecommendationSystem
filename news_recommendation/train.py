@@ -1,161 +1,184 @@
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from dataset import BaseDataset
 import torch
 import torch.nn as nn
 import time
 import numpy as np
-from config import model_name
-from tqdm import tqdm
 import os
-from pathlib import Path
-from test import evaluate
-import importlib
 import datetime
 import copy
-import math
+import importlib
+import enlighten
 
-try:
-    Model = getattr(importlib.import_module(f"model.{model_name}"), model_name)
-    config = getattr(importlib.import_module('config'), f"{model_name}Config")
-except AttributeError:
-    print(f"{model_name} not included!")
-    exit()
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from pathlib import Path
+
+from news_recommendation.parameters import parse_args
+from news_recommendation.dataset import TrainDataset
+from news_recommendation.test import evaluate
+from news_recommendation.early_stop import EarlyStopping
+from news_recommendation.utils import time_since, create_logger, dict2table
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+args = parse_args()
+Model = getattr(importlib.import_module("news_recommendation.model"),
+                args.model)
+
+import ipdb
 
 
 def train():
-    writer = SummaryWriter(
-        log_dir=
-        f"./runs/{model_name}/{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}"
-    )
+    writer = SummaryWriter(log_dir=os.path.join(
+        args.tensorboard_runs_path,
+        f'{args.model}-{args.dataset}',
+        f"{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}",
+    ))
 
     try:
         pretrained_word_embedding = torch.from_numpy(
-            np.load('./data/train/pretrained_word_embedding.npy')).float()
+            np.load(f'./data/{args.dataset}/pretrained_word_embedding.npy')
+        ).float()
     except FileNotFoundError:
+        logger.warning('Pretrained word embedding not found')
         pretrained_word_embedding = None
 
-    model = Model(config, pretrained_word_embedding).to(device)
+    model = Model(pretrained_word_embedding).to(device)
+    logger.info(model)
 
-    print(model)
-
-    dataset = BaseDataset('data/train/behaviors_parsed.tsv',
-                          'data/train/news_parsed.tsv')
-
-    print(f"Load training dataset with size {len(dataset)}.")
-
-    dataloader = iter(
-        DataLoader(dataset,
-                   batch_size=config.batch_size,
-                   shuffle=True,
-                   num_workers=config.num_workers,
-                   drop_last=True,
-                   pin_memory=True))
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     start_time = time.time()
     loss_full = []
-    exhaustion_count = 0
     step = 0
     early_stopping = EarlyStopping()
 
     best_checkpoint = copy.deepcopy(model.state_dict())
     best_val_metrics = {}
-    if config.save_checkpoint:
-        checkpoint_dir = os.path.join('./checkpoint', model_name)
+    if args.save_checkpoint:
+        checkpoint_dir = os.path.join(args.checkpoint_path,
+                                      f'{args.model}-{args.dataset}')
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-    for i in tqdm(range(
-            1,
-            config.num_epochs * len(dataset) // config.batch_size + 1),
-                  desc="Training"):
-        try:
-            minibatch = next(dataloader)
-        except StopIteration:
-            exhaustion_count += 1
-            tqdm.write(
-                f"Training data exhausted for {exhaustion_count} times after {i} batches, reuse the dataset."
-            )
-            dataloader = iter(
-                DataLoader(dataset,
-                           batch_size=config.batch_size,
-                           shuffle=True,
-                           num_workers=config.num_workers,
-                           drop_last=True,
-                           pin_memory=True))
-            minibatch = next(dataloader)
+    enlighten_manager = enlighten.get_manager()
+    batch = 0
 
-        step += 1
-        if model_name == 'LSTUR':
-            y_pred = model(minibatch["user"], minibatch["clicked_news_length"],
-                           minibatch["candidate_news"],
-                           minibatch["clicked_news"])
-        elif model_name == 'TANR':
-            y_pred, topic_classification_loss = model(
-                minibatch["candidate_news"], minibatch["clicked_news"])
-        else:
-            y_pred = model(minibatch["candidate_news"],
-                           minibatch["clicked_news"])
+    try:
+        with enlighten_manager.counter(total=args.num_epochs,
+                                       desc='Training epochs',
+                                       unit='epochs') as epoch_pbar:
+            for epoch in epoch_pbar(range(1, args.num_epochs + 1)):
+                dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
+                                       f'data/{args.dataset}/news.tsv', epoch,
+                                       logger)
+                # TODO pin_memory
+                dataloader = DataLoader(dataset,
+                                        batch_size=args.batch_size,
+                                        shuffle=True,
+                                        num_workers=args.num_workers,
+                                        drop_last=True,
+                                        pin_memory=True)
+                with enlighten_manager.counter(total=len(dataloader),
+                                               desc='Training batches',
+                                               unit='batches',
+                                               leave=False) as batch_pbar:
+                    for minibatch in batch_pbar(dataloader):
+                        batch += 1
 
-        y = torch.zeros(len(y_pred)).long().to(device)
-        loss = criterion(y_pred, y)
+                        single_news_length = list(
+                            dataset.news_pattern.values())[-1][-1]
+                        history = minibatch[:, dataset.behaviors_pattern[
+                            'history'][0]:dataset.behaviors_pattern['history']
+                                            [1]].reshape(
+                                                -1, single_news_length)
 
-        if model_name == 'TANR':
-            if i % 10 == 0:
-                writer.add_scalar('Train/BaseLoss', loss.item(), step)
-                writer.add_scalar('Train/TopicClassificationLoss',
-                                  topic_classification_loss.item(), step)
-                writer.add_scalar(
-                    'Train/TopicBaseRatio',
-                    topic_classification_loss.item() / loss.item(), step)
-            loss += config.topic_classification_loss_weight * topic_classification_loss
-        loss_full.append(loss.item())
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+                        positive_candidate = minibatch[:, dataset.
+                                                       behaviors_pattern[
+                                                           'positive_candidate']
+                                                       [0]:dataset.
+                                                       behaviors_pattern[
+                                                           'positive_candidate']
+                                                       [1]]
+                        negative_candidates = minibatch[:, dataset.behaviors_pattern[
+                            'negative_candidates'][0]:dataset.behaviors_pattern[
+                                'negative_candidates'][1]].reshape(
+                                    -1, single_news_length)
 
-        if i % 10 == 0:
-            writer.add_scalar('Train/Loss', loss.item(), step)
+                        if 'user' in dataset.behaviors_pattern:
+                            user = minibatch[:,
+                                             dataset.behaviors_pattern['user']
+                                             [0]:dataset.
+                                             behaviors_pattern['user'][1]]
+                        if 'history_length' in dataset.behaviors_pattern:
+                            history_length = minibatch[:, dataset.
+                                                       behaviors_pattern[
+                                                           'history_length']
+                                                       [0]:dataset.
+                                                       behaviors_pattern[
+                                                           'history_length']
+                                                       [1]]
 
-        if i % config.num_batches_show_loss == 0:
-            tqdm.write(
-                f"Time {time_since(start_time)}, batches {i}, current loss {loss.item():.4f}, average loss: {np.mean(loss_full):.4f}, latest average loss: {np.mean(loss_full[-256:]):.4f}"
-            )
+                        if args.model == 'LSTUR':
+                            loss = model(user, history, history_length,
+                                         positive_candidate,
+                                         negative_candidates)
+                        elif args.model == 'NRMS':
+                            loss = model(history, positive_candidate,
+                                         negative_candidates)
+                        elif args.model == 'NAML':
+                            loss = model(history, positive_candidate,
+                                         negative_candidates,
+                                         dataset.news_pattern)
 
-        if i % config.num_batches_validate == 0:
-            model.eval()
-            metrics = evaluate(model, './data/val', config.num_workers, 200000)
-            model.train()
-            for metric, value in metrics.items():
-                writer.add_scalar(f'Validation/{metric}', value, step)
+                        loss_full.append(loss)
 
-            tqdm.write(
-                f"Time {time_since(start_time)}, batches {i}, metrics\n{dict2table(metrics)}"
-            )
+                        if batch % 10 == 0:
+                            writer.add_scalar('Train/Loss', loss, step)
 
-            early_stop, get_better = early_stopping(-metrics['AUC'])
-            if early_stop:
-                tqdm.write('Early stop.')
-                break
-            elif get_better:
-                best_checkpoint = copy.deepcopy(model.state_dict())
-                best_val_metrics = copy.deepcopy(metrics)
-                if config.save_checkpoint:
-                    torch.save(
-                        model.state_dict(),
-                        os.path.join(checkpoint_dir, f"ckpt-{step}.pth"))
+                        if batch % args.num_batches_show_loss == 0:
+                            logger.info(
+                                f"Time {time_since(start_time)}, batches {batch}, current loss {loss:.4f}, average loss: {np.mean(loss_full):.4f}, latest average loss: {np.mean(loss_full[-256:]):.4f}"
+                            )
 
-    print(f'Best metrics on validation set\n{dict2table(best_val_metrics)}')
+                        if batch % args.num_batches_validate == 0:
+                            model.eval()
+                            metrics = evaluate(model, './data/val',
+                                               args.num_workers, 200000)
+                            model.train()
+                            for metric, value in metrics.items():
+                                writer.add_scalar(f'Validation/{metric}',
+                                                  value, step)
+
+                            logger.info(
+                                f"Time {time_since(start_time)}, batches {batch}, metrics\n{dict2table(metrics)}"
+                            )
+
+                            early_stop, get_better = early_stopping(
+                                -metrics['AUC'])
+                            if early_stop:
+                                logger.info('Early stop.')
+                                break
+                            elif get_better:
+                                best_checkpoint = copy.deepcopy(
+                                    model.state_dict())
+                                best_val_metrics = copy.deepcopy(metrics)
+                                if args.save_checkpoint:
+                                    torch.save(
+                                        model.state_dict(),
+                                        os.path.join(checkpoint_dir,
+                                                     f"ckpt-{step}.pth"))
+
+    except KeyboardInterrupt:
+        logger.info('Stop in advance')
+
+    logger.info(
+        f'Best metrics on validation set\n{dict2table(best_val_metrics)}')
 
     model.load_state_dict(best_checkpoint)
     model.eval()
-    metrics = evaluate(model, './data/test', config.num_workers)
-    print(f'Metrics on test set\n{dict2table(metrics)}')
+    metrics = evaluate(model, './data/test', args.num_workers)
+    logger.info(f'Metrics on test set\n{dict2table(metrics)}')
 
 
 if __name__ == '__main__':
-    print('Using device:', device)
-    print(f'Training model {model_name}')
+    logger = create_logger()
+    logger.info(args)
+    logger.info(f'Using device: {device}')
+    logger.info(f'Training {args.model} on {args.dataset}')
     train()

@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
+
 from math import sqrt
 
 
 class DNNClickPredictor(torch.nn.Module):
     def __init__(self, input_size, hidden_size=None):
-        super(DNNClickPredictor, self).__init__()
+        super().__init__()
         if hidden_size is None:
             # TODO: is sqrt(input_size) a good default value?
             hidden_size = int(sqrt(input_size))

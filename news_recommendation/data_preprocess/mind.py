@@ -127,8 +127,8 @@ def parse_behaviors(
     user2int_path,
 ):
     print(f"Parse {source}")
-    news2int = dict(pd.read_table(news2int_path).values.tolist())
-    user2int = dict(pd.read_table(user2int_path).values.tolist())
+    news2int = dict(pd.read_table(news2int_path).to_numpy().tolist())
+    user2int = dict(pd.read_table(user2int_path).to_numpy().tolist())
 
     behaviors = pd.read_table(source,
                               header=None,
@@ -137,9 +137,15 @@ def parse_behaviors(
     behaviors.history.fillna('', inplace=True)
 
     def parse_row(row):
+        history = [
+            news2int[x] for x in row.history.split()[-args.num_history:]
+        ]
+        history_length = len(history)
+        history = [0] * (args.num_history - len(history)) + history
         new_row = [
             user2int[row.user],
-            [news2int[x] for x in row.history.split()],
+            history,
+            history_length,
             [
                 news2int[x.split('-')[0]] for x in row.candidates.split()
                 if x.endswith('-1')
@@ -152,8 +158,8 @@ def parse_behaviors(
 
         return pd.Series(new_row,
                          index=[
-                             'user', 'history', 'positive_candidates',
-                             'negative_candidates'
+                             'user', 'history', 'history_length',
+                             'positive_candidates', 'negative_candidates'
                          ])
 
     behaviors = behaviors.swifter.apply(parse_row, axis=1)
@@ -188,14 +194,14 @@ def generate_word_embedding(source, target, word2int_path):
     merged.set_index('int', inplace=True)
 
     missed_index = np.setdiff1d(np.arange(len(word2int) + 1),
-                                merged.index.values)
+                                merged.index.to_numpy())
     missed_embedding = pd.DataFrame(data=np.random.normal(
         size=(len(missed_index), args.word_embedding_dim)))
     missed_embedding['int'] = missed_index
     missed_embedding.set_index('int', inplace=True)
 
     final_embedding = pd.concat([merged, missed_embedding]).sort_index()
-    np.save(target, final_embedding.values)
+    np.save(target, final_embedding.to_numpy())
 
     print(
         f'Rate of word missed in pretrained embedding: {(len(missed_index)-1)/len(word2int):.4f}'
@@ -227,24 +233,24 @@ if __name__ == '__main__':
 
     Path(args.target_dir).mkdir(parents=True, exist_ok=True)
 
-    print('Parse news')
-    parse_news(
-        [
-            path.join(args.source_dir, x, 'news.tsv')
-            for x in ['train', 'val', 'test']
-        ],
-        path.join(args.target_dir, 'news.tsv'),
-        path.join(args.target_dir, 'news2int.tsv'),
-        path.join(args.target_dir, 'category2int.tsv'),
-        path.join(args.target_dir, 'word2int.tsv'),
-    )
+    # print('Parse news')
+    # parse_news(
+    #     [
+    #         path.join(args.source_dir, x, 'news.tsv')
+    #         for x in ['train', 'val', 'test']
+    #     ],
+    #     path.join(args.target_dir, 'news.tsv'),
+    #     path.join(args.target_dir, 'news2int.tsv'),
+    #     path.join(args.target_dir, 'category2int.tsv'),
+    #     path.join(args.target_dir, 'word2int.tsv'),
+    # )
 
-    print('Generate word embedding')
-    generate_word_embedding(
-        args.glove_path,
-        path.join(args.target_dir, 'pretrained_word_embedding.npy'),
-        path.join(args.target_dir, 'word2int.tsv'),
-    )
+    # print('Generate word embedding')
+    # generate_word_embedding(
+    #     args.glove_path,
+    #     path.join(args.target_dir, 'pretrained_word_embedding.npy'),
+    #     path.join(args.target_dir, 'word2int.tsv'),
+    # )
 
     print('Parse behaviors')
     save_user_id(

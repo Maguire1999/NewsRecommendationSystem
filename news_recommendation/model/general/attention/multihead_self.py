@@ -9,7 +9,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, d_k):
-        super(ScaledDotProductAttention, self).__init__()
+        super().__init__()
         self.d_k = d_k
 
     def forward(self, Q, K, V, attn_mask=None):
@@ -25,7 +25,7 @@ class ScaledDotProductAttention(nn.Module):
 
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self, d_model, num_attention_heads):
-        super(MultiHeadSelfAttention, self).__init__()
+        super().__init__()
         self.d_model = d_model
         self.num_attention_heads = num_attention_heads
         assert d_model % num_attention_heads == 0

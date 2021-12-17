@@ -119,7 +119,7 @@ python -m news_recommendation.data_preprocess.adressa \
 Run.
 
 ```bash
-# Train and save checkpoint into `checkpoint/{model_name}/` directory
+# Train and save checkpoint into `checkpoint/{model}/` directory
 python -m news_recommendation.train
 # Load latest checkpoint and evaluate on the test set
 python -m news_recommendation.evaluate
@@ -131,7 +131,7 @@ You can visualize metrics with TensorBoard.
 tensorboard --logdir=runs
 
 # or
-tensorboard --logdir=runs/{model_name}
+tensorboard --logdir=runs/{model}
 # for a specific model
 ```
 
@@ -149,7 +149,7 @@ tensorboard --logdir=runs/{model_name}
 
 Checkpoints: <https://drive.google.com/open?id=TODO>
 
-You can verify the results by simply downloading them and running `MODEL_NAME=XXXX python -m news_recommendation.evaluate`.
+You can verify the results by simply downloading them and running `TODO MODEL_NAME=XXXX python -m news_recommendation.evaluate`.
 
 ## Credits
 
