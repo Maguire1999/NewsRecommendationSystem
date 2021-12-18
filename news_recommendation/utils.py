@@ -4,9 +4,6 @@ import logging
 import coloredlogs
 import datetime
 
-from news_recommendation.parameters import parse_args
-args = parse_args()
-
 
 def time_since(since):
     """
@@ -17,7 +14,7 @@ def time_since(since):
     return time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
 
 
-def create_logger():
+def create_logger(args):
     logger = logging.getLogger(__name__)
     coloredlogs.install(level='DEBUG',
                         logger=logger,

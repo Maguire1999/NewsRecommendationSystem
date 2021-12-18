@@ -1,4 +1,5 @@
 import argparse
+
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()

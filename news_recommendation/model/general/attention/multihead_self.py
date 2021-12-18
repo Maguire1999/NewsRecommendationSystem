@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from news_recommendation.shared import device
 
 # TODO read
 

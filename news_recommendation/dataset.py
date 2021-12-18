@@ -10,12 +10,11 @@ import pickle
 from pathlib import Path
 from ast import literal_eval
 from torch.utils.data import Dataset
-from news_recommendation.parameters import parse_args
-args = parse_args()
+from news_recommendation.shared import args, logger
 
 
 class TrainDataset(Dataset):
-    def __init__(self, behaviors_path, news_path, epoch, logger):
+    def __init__(self, behaviors_path, news_path, epoch=1):
         super().__init__()
         assert all(
             attribute in ['category', 'subcategory', 'title', 'abstract']

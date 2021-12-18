@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..general.attention.multihead_self import MultiHeadSelfAttention
-from ..general.attention.additive import AdditiveAttention
-from news_recommendation.parameters import parse_args
-args = parse_args()
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+from news_recommendation.model.general.attention.multihead_self import MultiHeadSelfAttention
+from news_recommendation.model.general.attention.additive import AdditiveAttention
+from news_recommendation.shared import args, device
 
 
 class NewsEncoder(torch.nn.Module):

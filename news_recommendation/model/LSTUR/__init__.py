@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .news_encoder import NewsEncoder
 from .user_encoder import UserEncoder
-from ..general.click_predictor.dot_product import DotProductClickPredictor
-from news_recommendation.parameters import parse_args
-args = parse_args()
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from news_recommendation.model.general.click_predictor.dot_product import DotProductClickPredictor
+from news_recommendation.shared import args, device
 
 
 class LSTUR(torch.nn.Module):

@@ -1,10 +1,10 @@
 import torch
+
 from .news_encoder import NewsEncoder
 from .user_encoder import UserEncoder
-from ..general.click_predictor.dot_product import DotProductClickPredictor
-from ..general.trainer.centralized import CentralizedModelTrainer
-from news_recommendation.parameters import parse_args
-args = parse_args()
+from news_recommendation.model.general.click_predictor.dot_product import DotProductClickPredictor
+from news_recommendation.model.general.trainer.centralized import CentralizedModelTrainer
+from news_recommendation.shared import args
 
 
 class NRMS(torch.nn.Module, CentralizedModelTrainer):

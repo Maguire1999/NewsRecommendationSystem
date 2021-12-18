@@ -12,14 +12,13 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
-from news_recommendation.parameters import parse_args
+from news_recommendation.shared import args
 from news_recommendation.dataset import TrainDataset
 from news_recommendation.test import evaluate
 from news_recommendation.early_stop import EarlyStopping
-from news_recommendation.utils import time_since, create_logger, dict2table
+from news_recommendation.utils import time_since, dict2table
+from news_recommendation.shared import args, logger, device
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-args = parse_args()
 Model = getattr(importlib.import_module("news_recommendation.model"),
                 args.model)
 
@@ -65,8 +64,7 @@ def train():
                                        unit='epochs') as epoch_pbar:
             for epoch in epoch_pbar(range(1, args.num_epochs + 1)):
                 dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
-                                       f'data/{args.dataset}/news.tsv', epoch,
-                                       logger)
+                                       f'data/{args.dataset}/news.tsv', epoch)
                 # TODO pin_memory
                 dataloader = DataLoader(dataset,
                                         batch_size=args.batch_size,
@@ -177,7 +175,6 @@ def train():
 
 
 if __name__ == '__main__':
-    logger = create_logger()
     logger.info(args)
     logger.info(f'Using device: {device}')
     logger.info(f'Training {args.model} on {args.dataset}')

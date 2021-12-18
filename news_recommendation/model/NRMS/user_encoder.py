@@ -1,8 +1,8 @@
 import torch
-from ..general.attention.multihead_self import MultiHeadSelfAttention
-from ..general.attention.additive import AdditiveAttention
-from news_recommendation.parameters import parse_args
-args = parse_args()
+
+from news_recommendation.model.general.attention.multihead_self import MultiHeadSelfAttention
+from news_recommendation.model.general.attention.additive import AdditiveAttention
+from news_recommendation.shared import args
 
 
 class UserEncoder(torch.nn.Module):

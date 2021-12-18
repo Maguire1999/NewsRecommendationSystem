@@ -8,7 +8,7 @@ from os import path
 from pathlib import Path
 from nltk.tokenize import word_tokenize
 
-from news_recommendation.parameters import parse_args
+from news_recommendation.shared import args, logger
 
 
 def parse_news(
@@ -126,7 +126,7 @@ def parse_behaviors(
     news2int_path,
     user2int_path,
 ):
-    print(f"Parse {source}")
+    logger.info(f"Parse {source}")
     news2int = dict(pd.read_table(news2int_path).to_numpy().tolist())
     user2int = dict(pd.read_table(user2int_path).to_numpy().tolist())
 
@@ -203,7 +203,7 @@ def generate_word_embedding(source, target, word2int_path):
     final_embedding = pd.concat([merged, missed_embedding]).sort_index()
     np.save(target, final_embedding.to_numpy())
 
-    print(
+    logger.info(
         f'Rate of word missed in pretrained embedding: {(len(missed_index)-1)/len(word2int):.4f}'
     )
 
@@ -226,33 +226,33 @@ if __name__ == '__main__':
         required=True,
     )
 
-    args, _ = parser.parse_known_args()
-    args_global = parse_args()
-    for k, v in args_global.__dict__.items():
+    # Merge local and global args
+    args_local, _ = parser.parse_known_args()
+    for k, v in args_local.__dict__.items():
         args.__dict__[k] = v
 
     Path(args.target_dir).mkdir(parents=True, exist_ok=True)
 
-    # print('Parse news')
-    # parse_news(
-    #     [
-    #         path.join(args.source_dir, x, 'news.tsv')
-    #         for x in ['train', 'val', 'test']
-    #     ],
-    #     path.join(args.target_dir, 'news.tsv'),
-    #     path.join(args.target_dir, 'news2int.tsv'),
-    #     path.join(args.target_dir, 'category2int.tsv'),
-    #     path.join(args.target_dir, 'word2int.tsv'),
-    # )
+    logger.info('Parse news')
+    parse_news(
+        [
+            path.join(args.source_dir, x, 'news.tsv')
+            for x in ['train', 'val', 'test']
+        ],
+        path.join(args.target_dir, 'news.tsv'),
+        path.join(args.target_dir, 'news2int.tsv'),
+        path.join(args.target_dir, 'category2int.tsv'),
+        path.join(args.target_dir, 'word2int.tsv'),
+    )
 
-    # print('Generate word embedding')
-    # generate_word_embedding(
-    #     args.glove_path,
-    #     path.join(args.target_dir, 'pretrained_word_embedding.npy'),
-    #     path.join(args.target_dir, 'word2int.tsv'),
-    # )
+    logger.info('Generate word embedding')
+    generate_word_embedding(
+        args.glove_path,
+        path.join(args.target_dir, 'pretrained_word_embedding.npy'),
+        path.join(args.target_dir, 'word2int.tsv'),
+    )
 
-    print('Parse behaviors')
+    logger.info('Parse behaviors')
     save_user_id(
         [
             path.join(args.source_dir, x, 'behaviors.tsv')

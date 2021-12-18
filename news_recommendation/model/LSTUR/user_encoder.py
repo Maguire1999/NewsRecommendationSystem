@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
+
 from torch.nn.utils.rnn import pack_padded_sequence
 
-from news_recommendation.parameters import parse_args
-args = parse_args()
+from news_recommendation.shared import args
 
 
 class UserEncoder(torch.nn.Module):

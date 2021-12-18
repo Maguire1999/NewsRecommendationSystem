@@ -10,7 +10,7 @@ from multiprocessing import Pool
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import Dataset, DataLoader
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from news_recommendation.shared import args, logger, device
 
 
 def dcg_score(y_true, y_score, k=10):
@@ -165,19 +165,19 @@ def evaluate(model, directory, num_workers, max_count=sys.maxsize):
 
 
 if __name__ == '__main__':
-    print('Using device:', device)
-    print(f'Evaluating model {model}')
+    logger.info('Using device:', device)
+    logger.info(f'Evaluating model {model}')
     # Don't need to load pretrained word embedding
     # since it will be loaded from checkpoint later
     model = Model(config).to(device)
     from train import latest_checkpoint  # Avoid circular imports
     checkpoint_path = latest_checkpoint(path.join('./checkpoint', model))
     if checkpoint_path is None:
-        print('No checkpoint file found!')
+        logger.error('No checkpoint file found!')
         exit()
-    print(f"Load saved parameters in {checkpoint_path}")
+    logger.info(f"Load saved parameters in {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint)
     model.eval()
     metrics = evaluate(model, './data/test', args.num_workers)
-    print(f'Metrics on test set\n{dict2table(metrics)}')
+    logger.info(f'Metrics on test set\n{dict2table(metrics)}')

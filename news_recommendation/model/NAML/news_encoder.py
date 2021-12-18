@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..general.attention.additive import AdditiveAttention
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from news_recommendation.model.general.attention.additive import AdditiveAttention
+from news_recommendation.shared import device
 
 
 class TextEncoder(torch.nn.Module):
