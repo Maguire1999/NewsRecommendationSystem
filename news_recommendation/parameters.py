@@ -16,8 +16,8 @@ def parse_args():
 
     parser.add_argument('--model',
                         type=str,
-                        default='NRMS',
-                        choices=['NRMS', 'NAML', 'LSTUR', 'TANR'])
+                        default='NAIVE',
+                        choices=['NAIVE', 'NRMS', 'NAML', 'LSTUR', 'TANR'])
     parser.add_argument('--loss',
                         type=str,
                         default='CE',
@@ -45,7 +45,7 @@ def parse_args():
         help='Number of batchs to check metrics on validation dataset')
     parser.add_argument('--save_checkpoint', type=str2bool, default=True)
     parser.add_argument('--cache_dataset', type=str2bool, default=True)
-    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
     parser.add_argument('--num_workers',
                         type=int,
@@ -86,6 +86,11 @@ def parse_args():
     args, _ = parser.parse_known_args()
 
     dataset_attributes = {
+        'NAIVE': {
+            'news': ['title'],
+            'behaviors':
+            ['history', 'positive_candidate', 'negative_candidates']
+        },
         'NRMS': {
             'news': ['title'],
             'behaviors':

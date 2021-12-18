@@ -141,7 +141,7 @@ def parse_behaviors(
             news2int[x] for x in row.history.split()[-args.num_history:]
         ]
         history_length = len(history)
-        history = [0] * (args.num_history - len(history)) + history
+        history = [0] * (args.num_history - history_length) + history
         new_row = [
             user2int[row.user],
             history,

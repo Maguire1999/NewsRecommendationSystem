@@ -19,8 +19,9 @@ from news_recommendation.early_stop import EarlyStopping
 from news_recommendation.utils import time_since, dict2table
 from news_recommendation.shared import args, logger, device
 
-Model = getattr(importlib.import_module("news_recommendation.model"),
-                args.model)
+Model = getattr(
+    importlib.import_module(f"news_recommendation.model.{args.model}"),
+    args.model)
 
 import ipdb
 
@@ -45,7 +46,7 @@ def train():
 
     start_time = time.time()
     loss_full = []
-    step = 0
+    batch = 0
     early_stopping = EarlyStopping()
 
     best_checkpoint = copy.deepcopy(model.state_dict())
@@ -56,7 +57,6 @@ def train():
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     enlighten_manager = enlighten.get_manager()
-    batch = 0
 
     try:
         with enlighten_manager.counter(total=args.num_epochs,
@@ -116,18 +116,20 @@ def train():
                             loss = model(user, history, history_length,
                                          positive_candidate,
                                          negative_candidates)
-                        elif args.model == 'NRMS':
+                        elif args.model in ['NAIVE', 'NRMS']:
                             loss = model(history, positive_candidate,
                                          negative_candidates)
                         elif args.model == 'NAML':
                             loss = model(history, positive_candidate,
                                          negative_candidates,
                                          dataset.news_pattern)
+                        else:
+                            raise ValueError
 
                         loss_full.append(loss)
 
                         if batch % 10 == 0:
-                            writer.add_scalar('Train/Loss', loss, step)
+                            writer.add_scalar('Train/Loss', loss, batch)
 
                         if batch % args.num_batches_show_loss == 0:
                             logger.info(
@@ -141,7 +143,7 @@ def train():
                             model.train()
                             for metric, value in metrics.items():
                                 writer.add_scalar(f'Validation/{metric}',
-                                                  value, step)
+                                                  value, batch)
 
                             logger.info(
                                 f"Time {time_since(start_time)}, batches {batch}, metrics\n{dict2table(metrics)}"
@@ -160,7 +162,7 @@ def train():
                                     torch.save(
                                         model.state_dict(),
                                         os.path.join(checkpoint_dir,
-                                                     f"ckpt-{step}.pth"))
+                                                     f"ckpt-{batch}.pth"))
 
     except KeyboardInterrupt:
         logger.info('Stop in advance')
