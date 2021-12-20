@@ -3,6 +3,12 @@ import os
 import logging
 import coloredlogs
 import datetime
+import hashlib
+import pickle
+import numpy as np
+import math
+
+from pathlib import Path
 
 
 def time_since(since):
@@ -19,7 +25,7 @@ def create_logger(args):
     coloredlogs.install(level='DEBUG',
                         logger=logger,
                         fmt='%(asctime)s %(levelname)s %(message)s')
-    log_dir = os.path.join(args.log_path, f'{args.model}-{args.dataset}')
+    log_dir = os.path.join(args.log_dir, f'{args.model}-{args.dataset}')
     os.makedirs(log_dir, exist_ok=True)
     log_file_path = os.path.join(
         log_dir,
@@ -72,7 +78,7 @@ def dict2table(d, k_fn=str, v_fn=None, corner_name=''):
                 f"| {' | '.join(accumulated_keys + list(map(v_fn, d.values())))} |"
             ]
 
-    lines = [parse_header(d), parse_segmentation(d), *parse_content(d), '\n']
+    lines = [parse_header(d), parse_segmentation(d), *parse_content(d)]
     return '\n'.join(lines)
 
 
@@ -87,3 +93,57 @@ def latest_checkpoint(directory):
         return None
     return os.path.join(directory,
                         all_checkpoints[max(all_checkpoints.keys())])
+
+
+def load_from_cache(
+    identifiers,
+    generator,
+    cache_dir,
+    enabled,
+    load_cache_callback=lambda x: print(f'Load cache from {x}'),
+    save_cache_callback=lambda x: print(f'Save cache to {x}')):
+    if not enabled:
+        return generator()
+
+    cache_path = os.path.join(
+        cache_dir,
+        f"{hashlib.md5('-'.join(map(str,identifiers)).encode('utf-8')).hexdigest()}.pkl"
+    )
+    if os.path.isfile(cache_path):
+        with open(cache_path, 'rb') as f:
+            load_cache_callback(cache_path)
+            return pickle.load(f)
+    else:
+        data = generator()
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        with open(cache_path, 'wb') as f:
+            pickle.dump(data, f)
+        save_cache_callback(cache_path)
+        return data
+
+
+class EarlyStopping:
+    def __init__(self, patience=5):
+        self.patience = patience
+        self.counter = 0
+        self.best_loss = np.Inf
+
+    def __call__(self, val_loss):
+        """
+        if you use other metrics where a higher value is better, e.g. accuracy,
+        call this with its corresponding negative value
+        """
+        if val_loss < self.best_loss:
+            early_stop = False
+            get_better = True
+            self.counter = 0
+            self.best_loss = val_loss
+        else:
+            get_better = False
+            self.counter += 1
+            if self.counter >= self.patience:
+                early_stop = True
+            else:
+                early_stop = False
+
+        return early_stop, get_better

@@ -22,7 +22,7 @@ def parse_news(
         pd.read_table(
             x,
             header=None,
-            usecols=[0, 1, 2, 3, 4],
+            usecols=range(5),
             names=['id', 'category', 'subcategory', 'title', 'abstract'],
         ) for x in source
     ]

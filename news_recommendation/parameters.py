@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument(
         '--num_batches_validate',
         type=int,
-        default=1000,
+        default=10,
         help='Number of batchs to check metrics on validation dataset')
     parser.add_argument('--save_checkpoint', type=str2bool, default=True)
     parser.add_argument('--cache_dataset', type=str2bool, default=True)
@@ -74,39 +74,41 @@ def parse_args():
     parser.add_argument('--topic_classification_loss_weight',
                         type=float,
                         default=0.1)
-    parser.add_argument('--log_path', type=str, default='./log/')
-    parser.add_argument('--checkpoint_path', type=str, default='./checkpoint/')
-    parser.add_argument('--tensorboard_runs_path', type=str, default='./runs/')
-    parser.add_argument('--cache_path', type=str, default='./cache/')
+    parser.add_argument('--log_dir', type=str, default='./log/')
+    parser.add_argument('--checkpoint_dir', type=str, default='./checkpoint/')
+    parser.add_argument('--tensorboard_runs_dir', type=str, default='./runs/')
+    parser.add_argument('--cache_dir', type=str, default='./cache/')
     args, _ = parser.parse_known_args()
 
     dataset_attributes = {
         'NAIVE': {
             'news': ['title'],
-            'behaviors':
-            ['history', 'positive_candidate', 'negative_candidates']
+            'behaviors': [
+                'user', 'history_length', 'history', 'positive_candidates',
+                'negative_candidates'
+            ]
         },
         'NRMS': {
             'news': ['title'],
             'behaviors':
-            ['history', 'positive_candidate', 'negative_candidates']
+            ['history', 'positive_candidates', 'negative_candidates']
         },
         'NAML': {
             'news': ['category', 'subcategory', 'title', 'abstract'],
             'behaviors':
-            ['history', 'positive_candidate', 'negative_candidates']
+            ['history', 'positive_candidates', 'negative_candidates']
         },
         'LSTUR': {
             'news': ['category', 'subcategory', 'title'],
             'behaviors': [
-                'user', 'history', 'history_length', 'positive_candidate',
+                'user', 'history', 'history_length', 'positive_candidates',
                 'negative_candidates'
             ]
         },
         'TANR': {
             'news': ['category', 'title'],
             'behaviors':
-            ['history', 'positive_candidate', 'negative_candidates']
+            ['history', 'positive_candidates', 'negative_candidates']
         }
     }
     args.dataset_attributes = dataset_attributes[args.model]

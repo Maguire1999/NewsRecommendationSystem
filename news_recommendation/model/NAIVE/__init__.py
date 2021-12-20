@@ -15,7 +15,7 @@ class NAIVE(torch.nn.Module, CentralizedModelTrainer):
         self.click_predictor = DotProductClickPredictor()
         super().init(self)
 
-    def forward(self, history, positive_candidate, negative_candidates):
+    def forward(self, history, positive_candidates, negative_candidates):
         """
         Args:
 
@@ -23,11 +23,11 @@ class NAIVE(torch.nn.Module, CentralizedModelTrainer):
           click_probability: batch_size, 1 + K
         """
         vector = self.news_encoder(
-            torch.cat((history, positive_candidate, negative_candidates),
+            torch.cat((history, positive_candidates, negative_candidates),
                       dim=0))
         history_vector, candidates_vector = vector.split(
             (history.shape[0],
-             positive_candidate.shape[0] + negative_candidates.shape[0]),
+             positive_candidates.shape[0] + negative_candidates.shape[0]),
             dim=0)
         history_vector = history_vector.view(-1, args.num_history,
                                              args.word_embedding_dim)

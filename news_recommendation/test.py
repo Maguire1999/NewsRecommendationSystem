@@ -1,16 +1,20 @@
 import numpy as np
 import torch
 import sys
-import pandas as pd
+import os
+import importlib
 
-from tqdm import tqdm
-from os import path
-from ast import literal_eval
 from multiprocessing import Pool
 from sklearn.metrics import roc_auc_score
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
-from news_recommendation.shared import args, logger, device
+from news_recommendation.shared import args, logger, device, enlighten_manager
+from news_recommendation.utils import latest_checkpoint, dict2table
+from news_recommendation.dataset import NewsDataset, UserDataset, BehaviorsDataset
+
+Model = getattr(
+    importlib.import_module(f"news_recommendation.model.{args.model}"),
+    args.model)
 
 
 def dcg_score(y_true, y_score, k=10):
@@ -52,126 +56,99 @@ def calculate_single_user_metric(pair):
 
 
 @torch.no_grad()
-def evaluate(model, directory, num_workers, max_count=sys.maxsize):
+def evaluate(model, target, max_count=sys.maxsize):
     """
-    Evaluate model on target directory.
     Args:
         model: model to be evaluated
         directory: the directory that contains two files (behaviors.tsv, news_parsed.tsv)
-        num_workers: processes number for calculating metrics
     Returns:
         AUC
         MRR
         nDCG@5
         nDCG@10
     """
-    news_dataset = NewsDataset(path.join(directory, 'news_parsed.tsv'))
+    assert target in ['val', 'test']
+    news_dataset = NewsDataset(f'data/{args.dataset}/news.tsv')
     news_dataloader = DataLoader(news_dataset,
                                  batch_size=args.batch_size * 16,
                                  shuffle=False,
-                                 num_workers=args.num_workers,
-                                 drop_last=False,
-                                 pin_memory=True)
+                                 drop_last=False)
+    news_vector = []
+    with enlighten_manager.counter(total=len(news_dataloader),
+                                   desc='Calculating vectors for news',
+                                   leave=False) as pbar:
+        for minibatch in pbar(news_dataloader):
+            news_vector.append(model.get_news_vector(minibatch))
+    news_vector = torch.cat(news_vector, dim=0)
 
-    news2vector = {}
-    for minibatch in tqdm(news_dataloader,
-                          desc="Calculating vectors for news"):
-        news_ids = minibatch["id"]
-        if any(id not in news2vector for id in news_ids):
-            news_vector = model.get_news_vector(minibatch)
-            for id, vector in zip(news_ids, news_vector):
-                if id not in news2vector:
-                    news2vector[id] = vector
-
-    news2vector['PADDED_NEWS'] = torch.zeros(
-        list(news2vector.values())[0].size())
-
-    user_dataset = UserDataset(path.join(directory, 'behaviors.tsv'),
-                               'data/train/user2int.tsv')
+    user_dataset = UserDataset(f'data/{args.dataset}/{target}.tsv')
     user_dataloader = DataLoader(user_dataset,
                                  batch_size=args.batch_size * 16,
                                  shuffle=False,
-                                 num_workers=args.num_workers,
-                                 drop_last=False,
-                                 pin_memory=True)
+                                 drop_last=False)
 
     user2vector = {}
-    for minibatch in tqdm(user_dataloader,
-                          desc="Calculating vectors for users"):
-        user_strings = minibatch["clicked_news_string"]
-        if any(user_string not in user2vector for user_string in user_strings):
-            history_vector = torch.stack([
-                torch.stack([news2vector[x].to(device) for x in news_list],
-                            dim=0) for news_list in minibatch["clicked_news"]
-            ],
-                                         dim=0).transpose(0, 1)
-            if model == 'LSTUR':
+    with enlighten_manager.counter(total=len(user_dataloader),
+                                   desc='Calculating vectors for users',
+                                   leave=False) as pbar:
+        for minibatch in pbar(user_dataloader):
+            if args.model == 'LSTUR':
                 user_vector = model.get_user_vector(
-                    minibatch['user'], minibatch['clicked_news_length'],
-                    history_vector)
+                    news_vector[minibatch['history']],
+                    news_vector[minibatch['user']],
+                    news_vector[minibatch['history_length']],
+                )
             else:
-                user_vector = model.get_user_vector(history_vector)
-            for user, vector in zip(user_strings, user_vector):
-                if user not in user2vector:
-                    user2vector[user] = vector
+                user_vector = model.get_user_vector(
+                    news_vector[minibatch['history']])
+            for key, vector in zip(minibatch['key'], user_vector):
+                user2vector[key] = vector
 
-    behaviors_dataset = BehaviorsDataset(path.join(directory, 'behaviors.tsv'))
-    behaviors_dataloader = DataLoader(behaviors_dataset,
-                                      batch_size=1,
-                                      shuffle=False,
-                                      num_workers=args.num_workers)
+    behaviors_dataset = BehaviorsDataset(f'data/{args.dataset}/{target}.tsv')
 
     count = 0
 
     tasks = []
 
-    for minibatch in tqdm(behaviors_dataloader,
-                          desc="Calculating probabilities"):
-        count += 1
-        if count == max_count:
-            break
+    with enlighten_manager.counter(
+            total=len(behaviors_dataset),
+            desc='Adding tasks for calculating probabilities',
+            leave=False) as pbar:
+        for behaviors in behaviors_dataset:
+            pbar.update()
+            count += 1
+            if count == max_count:
+                break
 
-        candidate_news_vector = torch.stack([
-            news2vector[news[0].split('-')[0]]
-            for news in minibatch['impressions']
-        ],
-                                            dim=0)
-        user_vector = user2vector[minibatch['clicked_news_string'][0]]
-        click_probability = model.get_prediction(candidate_news_vector,
-                                                 user_vector)
+            candidates = behaviors['positive_candidates'] + behaviors[
+                'negative_candidates']
+            candidates_vector = news_vector[candidates]
+            user_vector = user2vector[behaviors['key']]
+            click_probability = model.get_prediction(candidates_vector,
+                                                     user_vector)
 
-        y_pred = click_probability.tolist()
-        y_true = [
-            int(news[0].split('-')[1]) for news in minibatch['impressions']
-        ]
+            y_pred = click_probability.tolist()
+            y_true = [1] * len(behaviors['positive_candidates']) + [0] * len(
+                behaviors['negative_candidates'])
 
-        tasks.append((y_true, y_pred))
+            tasks.append((y_true, y_pred))
 
-    with Pool(processes=num_workers) as pool:
+    logger.info('Calculating probabilities with multiprocessing')
+    with Pool() as pool:
         results = pool.map(calculate_single_user_metric, tasks)
 
-    aucs, mrrs, ndcg5s, ndcg10s = np.array(results).T
-
-    return {
-        'AUC': np.nanmean(aucs),
-        'MRR': np.nanmean(mrrs),
-        'nDCG@5': np.nanmean(ndcg5s),
-        'nDCG@10': np.nanmean(ndcg10s)
-    }
-    # TODO:
-    # return dict(
-    #     zip(['AUC', 'MRR', 'nDCG@5', 'nDCG@10'],
-    #         np.nanmean(np.array(results), axis=1)))
+    return dict(
+        zip(['AUC', 'MRR', 'nDCG@5', 'nDCG@10'],
+            np.nanmean(np.array(results), axis=0)))
 
 
 if __name__ == '__main__':
-    logger.info('Using device:', device)
-    logger.info(f'Evaluating model {model}')
-    # Don't need to load pretrained word embedding
-    # since it will be loaded from checkpoint later
-    model = Model(config).to(device)
-    from train import latest_checkpoint  # Avoid circular imports
-    checkpoint_path = latest_checkpoint(path.join('./checkpoint', model))
+    logger.info(args)
+    logger.info(f'Using device: {device}')
+    logger.info(f'Testing {args.model} on {args.dataset}')
+    model = Model().to(device)
+    checkpoint_path = latest_checkpoint(
+        os.path.join(args.checkpoint_dir, f'{args.model}-{args.dataset}'))
     if checkpoint_path is None:
         logger.error('No checkpoint file found!')
         exit()
@@ -179,5 +156,5 @@ if __name__ == '__main__':
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint)
     model.eval()
-    metrics = evaluate(model, './data/test', args.num_workers)
+    metrics = evaluate(model, 'test')
     logger.info(f'Metrics on test set\n{dict2table(metrics)}')

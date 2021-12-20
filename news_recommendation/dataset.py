@@ -1,52 +1,36 @@
 import pandas as pd
 import numpy as np
-import importlib
 import torch
 import random
-import os
-import hashlib
-import pickle
 
-from pathlib import Path
 from ast import literal_eval
 from torch.utils.data import Dataset
 from news_recommendation.shared import args, logger
+from news_recommendation.utils import load_from_cache
 
 
 class TrainDataset(Dataset):
     def __init__(self, behaviors_path, news_path, epoch=1):
         super().__init__()
-        assert all(
-            attribute in ['category', 'subcategory', 'title', 'abstract']
-            for attribute in args.dataset_attributes['news'])
-        assert all(attribute in [
-            'user', 'history', 'history_length', 'positive_candidate',
-            'negative_candidates'
-        ] for attribute in args.dataset_attributes['behaviors'])
 
-        pickle_path = os.path.join(
-            args.cache_path,
-            f"{hashlib.md5(str(args.__dict__).encode('utf-8')).hexdigest()}-{epoch}.pkl"
+        self.news, self.news_pattern = load_from_cache(
+            [args, news_path],
+            lambda: self._process_news(news_path),
+            args.cache_dir,
+            args.cache_dataset,
+            lambda x: logger.info(f'Load news cache from {x}'),
+            lambda x: logger.info(f'Save news cache to {x}'),
         )
-        if args.cache_dataset and os.path.isfile(pickle_path):
-            with open(pickle_path, 'rb') as f:
-                logger.info(f'Load dataset cache from {pickle_path}')
-                self.behaviors, self.news_pattern, self.behaviors_pattern = pickle.load(
-                    f)
-
-        else:
-            self.news, self.news_pattern = self._process_news(news_path)
-            self.single_news_length = list(self.news_pattern.values())[-1][-1]
-            self.behaviors, self.behaviors_pattern = self._process_behaviors(
-                behaviors_path)
-            if args.cache_dataset:
-                logger.info(f'Save dataset cache to {pickle_path}')
-                Path(args.cache_path).mkdir(parents=True, exist_ok=True)
-                with open(pickle_path, 'wb') as f:
-                    pickle.dump([
-                        self.behaviors, self.news_pattern,
-                        self.behaviors_pattern
-                    ], f)
+        self.behaviors, self.behaviors_pattern = load_from_cache(
+            [args, behaviors_path, epoch],
+            lambda: self._process_behaviors(behaviors_path),
+            args.cache_dir,
+            args.cache_dataset,
+            lambda x: logger.info(
+                f'Load training behaviors (epoch {epoch}) cache from {x}'),
+            lambda x: logger.info(
+                f'Save training behaviors (epoch {epoch}) cache to {x}'),
+        )
 
     def __len__(self):
         return len(self.behaviors)
@@ -54,7 +38,8 @@ class TrainDataset(Dataset):
     def __getitem__(self, i):
         return self.behaviors[i]
 
-    def _process_news(self, news_path):
+    @staticmethod
+    def _process_news(news_path):
         news = pd.read_table(
             news_path,
             usecols=args.dataset_attributes['news'],
@@ -88,6 +73,7 @@ class TrainDataset(Dataset):
         news = np.concatenate(news_elements, axis=1)
         # Add a news with id as 0 and content as 0s
         news = np.insert(news, 0, 0, axis=0)
+        news = torch.from_numpy(news)
         return news, news_pattern
 
     def _process_behaviors(self, behaviors_path):
@@ -99,9 +85,7 @@ class TrainDataset(Dataset):
                 ['history', 'positive_candidates', 'negative_candidates']
             })
         behaviors = behaviors.explode('positive_candidates', ignore_index=True)
-        behaviors.rename(columns={'positive_candidates': 'positive_candidate'},
-                         inplace=True)
-        behaviors.positive_candidate = behaviors.positive_candidate.infer_objects(
+        behaviors.positive_candidates = behaviors.positive_candidates.infer_objects(
         )
 
         def sample_negatives(negatives):
@@ -114,24 +98,25 @@ class TrainDataset(Dataset):
         behaviors.negative_candidates = behaviors.negative_candidates.apply(
             sample_negatives)
 
+        single_news_length = list(self.news_pattern.values())[-1][-1]
         behaviors_attributes2length = {
             'user':
             1,
             'history':
-            args.num_history * self.single_news_length,
+            args.num_history * single_news_length,
             'history_length':
             1,
-            'positive_candidate':
-            self.single_news_length,
+            'positive_candidates':
+            single_news_length,
             'negative_candidates':
-            args.negative_sampling_ratio * self.single_news_length,
+            args.negative_sampling_ratio * single_news_length,
         }
         behaviors_elements = []
         behaviors_pattern = {}
         current_length = 0
 
         for attribute in args.dataset_attributes['behaviors']:
-            if attribute in ['user', 'history_length', 'positive_candidate']:
+            if attribute in ['user', 'history_length', 'positive_candidates']:
                 numpy_array = behaviors[attribute].to_numpy()[..., np.newaxis]
             elif attribute in ['history', 'negative_candidates']:
                 numpy_array = np.array(behaviors[attribute].tolist())
@@ -139,7 +124,7 @@ class TrainDataset(Dataset):
                 raise ValueError
 
             if attribute in [
-                    'history', 'positive_candidate', 'negative_candidates'
+                    'history', 'positive_candidates', 'negative_candidates'
             ]:
                 numpy_array = self.news[numpy_array]
                 numpy_array = numpy_array.reshape((numpy_array.shape[0], -1))
@@ -156,108 +141,99 @@ class TrainDataset(Dataset):
         return behaviors, behaviors_pattern
 
 
-# class NewsDataset(Dataset):
-#     """
-#     Load news for evaluation.
-#     """
-#     def __init__(self, news_path):
-#         super().__init__()
-#         self.news_parsed = pd.read_table(
-#             news_path,
-#             usecols=['id'] + args.dataset_attributes['news'],
-#             converters={
-#                 attribute: literal_eval
-#                 for attribute in set(args.dataset_attributes['news'])
-#                 & set(['title', 'abstract'])
-#             })
-#         self.news2dict = self.news_parsed.to_dict('index')
-#         for key1 in self.news2dict.keys():
-#             for key2 in self.news2dict[key1].keys():
-#                 if type(self.news2dict[key1][key2]) != str:
-#                     self.news2dict[key1][key2] = torch.tensor(
-#                         self.news2dict[key1][key2])
+class NewsDataset(Dataset):
+    """
+    Load news for evaluation.
+    """
+    def __init__(self, news_path):
+        super().__init__()
+        self.news, self.news_pattern = load_from_cache(
+            [args, news_path],
+            lambda: TrainDataset._process_news(news_path),
+            args.cache_dir,
+            args.cache_dataset,
+            lambda x: logger.info(f'Load news cache from {x}'),
+            lambda x: logger.info(f'Save news cache to {x}'),
+        )
 
-#     def __len__(self):
-#         return len(self.news_parsed)
+    def __len__(self):
+        return len(self.news)
 
-#     def __getitem__(self, idx):
-#         item = self.news2dict[idx]
-#         return item
+    def __getitem__(self, i):
+        return self.news[i]
 
-# class UserDataset(Dataset):
-#     """
-#     Load users for evaluation, duplicated rows will be dropped
-#     """
-#     def __init__(self, behaviors_path, user2int_path):
-#         super().__init__()
-#         self.behaviors = pd.read_table(behaviors_path,
-#                                        header=None,
-#                                        usecols=[1, 3],
-#                                        names=['user', 'clicked_news'])
-#         self.behaviors.clicked_news.fillna(' ', inplace=True)
-#         self.behaviors.drop_duplicates(inplace=True)
-#         user2int = dict(pd.read_table(user2int_path).values.tolist())
-#         user_total = 0
-#         user_missed = 0
-#         for row in self.behaviors.itertuples():
-#             user_total += 1
-#             if row.user in user2int:
-#                 self.behaviors.at[row.Index, 'user'] = user2int[row.user]
-#             else:
-#                 user_missed += 1
-#                 self.behaviors.at[row.Index, 'user'] = 0
-#         if model == 'LSTUR':
-#             print(f'User miss rate: {user_missed/user_total:.4f}')
 
-#     def __len__(self):
-#         return len(self.behaviors)
+class UserDataset(Dataset):
+    """
+    Load users for evaluation, duplicated rows will be dropped
+    """
+    def __init__(self, behaviors_path):
+        super().__init__()
+        behaviors = pd.read_table(
+            behaviors_path,
+            usecols=set(args.dataset_attributes['behaviors'])
+            & set(['user', 'history', 'history_length']),
+        ).drop_duplicates(ignore_index=True)
+        self.key = behaviors.apply(
+            lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
+        behaviors.history = behaviors.history.apply(literal_eval)
 
-#     def __getitem__(self, idx):
-#         row = self.behaviors.iloc[idx]
-#         item = {
-#             "user": row.user,
-#             "clicked_news_string": row.clicked_news,
-#             "clicked_news":
-#             row.clicked_news.split()[:args.num_history]
-#         }
-#         item['clicked_news_length'] = len(item["clicked_news"])
-#         repeated_times = args.num_history - len(
-#             item["clicked_news"])
-#         assert repeated_times >= 0
-#         item["clicked_news"] = ['PADDED_NEWS'
-#                                 ] * repeated_times + item["clicked_news"]
+        self.history = torch.from_numpy(np.array(behaviors.history.tolist()))
+        if 'user' in args.dataset_attributes['behaviors']:
+            self.user = torch.from_numpy(behaviors.user.to_numpy())
+        if 'history_length' in args.dataset_attributes['behaviors']:
+            self.history_length = torch.from_numpy(
+                behaviors.history_length.to_numpy())
 
-#         return item
+    def __len__(self):
+        return len(self.history)
 
-# class BehaviorsDataset(Dataset):
-#     """
-#     Load behaviors for evaluation, (user, time) pair as session
-#     """
-#     def __init__(self, behaviors_path):
-#         super().__init__()
-#         self.behaviors = pd.read_table(behaviors_path,
-#                                        header=None,
-#                                        usecols=range(5),
-#                                        names=[
-#                                            'impression_id', 'user', 'time',
-#                                            'clicked_news', 'impressions'
-#                                        ])
-#         self.behaviors.clicked_news.fillna(' ', inplace=True)
-#         self.behaviors.impressions = self.behaviors.impressions.str.split()
+    def __getitem__(self, i):
+        item = {
+            'history': self.history[i],
+            'key': self.key[i],
+        }
+        if 'user' in args.dataset_attributes['behaviors']:
+            item['user'] = self.user[i]
+        if 'history_length' in args.dataset_attributes['behaviors']:
+            item['history_length'] = self.history_length[i]
+        return item
 
-#     def __len__(self):
-#         return len(self.behaviors)
 
-#     def __getitem__(self, idx):
-#         row = self.behaviors.iloc[idx]
-#         item = {
-#             "impression_id": row.impression_id,
-#             "user": row.user,
-#             "time": row.time,
-#             "clicked_news_string": row.clicked_news,
-#             "impressions": row.impressions
-#         }
-#         return item
+class BehaviorsDataset(Dataset):
+    """
+    Load behaviors for evaluation, (user, time) pair as session
+    """
+    def __init__(self, behaviors_path):
+        super().__init__()
+        behaviors = pd.read_table(behaviors_path,
+                                  usecols=args.dataset_attributes['behaviors'])
+
+        columns = list(behaviors.columns)
+        for x in ['positive_candidates', 'negative_candidates']:
+            columns.remove(x)
+        self.key = behaviors[columns].apply(
+            lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
+
+        behaviors.positive_candidates = behaviors.positive_candidates.apply(
+            literal_eval)
+        behaviors.negative_candidates = behaviors.negative_candidates.apply(
+            literal_eval)
+
+        self.positive_candidates = behaviors.positive_candidates.tolist()
+        self.negative_candidates = behaviors.negative_candidates.tolist()
+
+    def __len__(self):
+        return len(self.key)
+
+    def __getitem__(self, i):
+        item = {
+            'key': self.key[i],
+            'positive_candidates': self.positive_candidates[i],
+            'negative_candidates': self.negative_candidates[i],
+        }
+        return item
+
 
 if __name__ == '__main__':
     from torch.utils.data import DataLoader, BatchSampler, RandomSampler
