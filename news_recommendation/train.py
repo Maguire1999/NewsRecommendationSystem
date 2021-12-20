@@ -8,7 +8,8 @@ import copy
 import importlib
 import enlighten
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, BatchSampler, RandomSampler
+
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
@@ -65,12 +66,13 @@ def train():
             for epoch in epoch_pbar(range(1, args.num_epochs + 1)):
                 dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
                                        f'data/{args.dataset}/news.tsv', epoch)
-                # TODO pin_memory
+                # Use `sampler=BatchSampler(...)` to support batch indexing of dataset, which is faster
                 dataloader = DataLoader(dataset,
-                                        batch_size=args.batch_size,
-                                        shuffle=True,
-                                        num_workers=args.num_workers,
-                                        drop_last=True,
+                                        sampler=BatchSampler(
+                                            RandomSampler(dataset),
+                                            batch_size=args.batch_size,
+                                            drop_last=False),
+                                        collate_fn=lambda x: x[0],
                                         pin_memory=True)
                 with enlighten_manager.counter(total=len(dataloader),
                                                desc='Training batches',

@@ -151,6 +151,8 @@ class TrainDataset(Dataset):
             current_length += behaviors_attributes2length[attribute]
 
         behaviors = np.concatenate(behaviors_elements, axis=1)
+        behaviors = torch.from_numpy(
+            behaviors)  # TODO what if loaded from pickle and use gpu
         return behaviors, behaviors_pattern
 
 
@@ -258,14 +260,16 @@ class TrainDataset(Dataset):
 #         return item
 
 if __name__ == '__main__':
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 
     dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
                            f'data/{args.dataset}/news.tsv')
     dataloader = DataLoader(dataset,
-                            batch_size=512,
-                            shuffle=True,
-                            num_workers=4)
+                            sampler=BatchSampler(RandomSampler(dataset),
+                                                 batch_size=args.batch_size,
+                                                 drop_last=False),
+                            collate_fn=lambda x: x[0],
+                            pin_memory=True)
     for x in dataloader:
         print(x)
         import ipdb

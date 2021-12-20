@@ -47,11 +47,6 @@ def parse_args():
     parser.add_argument('--cache_dataset', type=str2bool, default=True)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
-    parser.add_argument('--num_workers',
-                        type=int,
-                        default=0,
-                        help='Number of workers for data loading'
-                        )  # TODO a non-zero value will slow down
     parser.add_argument('--num_history',
                         type=int,
                         default=50,
