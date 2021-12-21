@@ -36,17 +36,18 @@ def parse_args():
     parser.add_argument('--num_epochs', type=int, default=3)
     parser.add_argument('--num_batches_show_loss',
                         type=int,
-                        default=100,
+                        default=20,
                         help='Number of batchs to show loss')
     parser.add_argument(
         '--num_batches_validate',
         type=int,
-        default=10,
+        default=200,
         help='Number of batchs to check metrics on validation dataset')
-    parser.add_argument('--save_checkpoint', type=str2bool, default=True)
+    parser.add_argument('--save_checkpoint', type=str2bool, default=False)
     parser.add_argument('--cache_dataset', type=str2bool, default=True)
     parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--learning_rate', type=float, default=0.0001)
+    parser.add_argument('--learning_rate', type=float, default=0.001)
+    parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument('--num_history',
                         type=int,
                         default=50,
@@ -83,10 +84,8 @@ def parse_args():
     dataset_attributes = {
         'NAIVE': {
             'news': ['title'],
-            'behaviors': [
-                'user', 'history_length', 'history', 'positive_candidates',
-                'negative_candidates'
-            ]
+            'behaviors':
+            ['history', 'positive_candidates', 'negative_candidates']
         },
         'NRMS': {
             'news': ['title'],

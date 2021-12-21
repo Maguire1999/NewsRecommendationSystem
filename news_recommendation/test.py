@@ -134,7 +134,7 @@ def evaluate(model, target, max_count=sys.maxsize):
             tasks.append((y_true, y_pred))
 
     logger.info('Calculating probabilities with multiprocessing')
-    with Pool() as pool:
+    with Pool(processes=args.num_workers) as pool:
         results = pool.map(calculate_single_user_metric, tasks)
 
     return dict(

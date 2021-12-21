@@ -14,7 +14,14 @@ class TrainDataset(Dataset):
         super().__init__()
 
         self.news, self.news_pattern = load_from_cache(
-            [args, news_path],
+            [
+                args.dataset,
+                args.num_words_title,
+                args.num_words_abstract,
+                args.word_frequency_threshold,
+                args.dataset_attributes,
+                news_path,
+            ],
             lambda: self._process_news(news_path),
             args.cache_dir,
             args.cache_dataset,
@@ -22,7 +29,17 @@ class TrainDataset(Dataset):
             lambda x: logger.info(f'Save news cache to {x}'),
         )
         self.behaviors, self.behaviors_pattern = load_from_cache(
-            [args, behaviors_path, epoch],
+            [
+                args.dataset,
+                args.num_history,
+                args.num_words_title,
+                args.num_words_abstract,
+                args.word_frequency_threshold,
+                args.negative_sampling_ratio,
+                args.dataset_attributes,
+                behaviors_path,
+                epoch,
+            ],
             lambda: self._process_behaviors(behaviors_path),
             args.cache_dir,
             args.cache_dataset,
@@ -148,7 +165,14 @@ class NewsDataset(Dataset):
     def __init__(self, news_path):
         super().__init__()
         self.news, self.news_pattern = load_from_cache(
-            [args, news_path],
+            [
+                args.dataset,
+                args.num_words_title,
+                args.num_words_abstract,
+                args.word_frequency_threshold,
+                args.dataset_attributes,
+                news_path,
+            ],
             lambda: TrainDataset._process_news(news_path),
             args.cache_dir,
             args.cache_dataset,
