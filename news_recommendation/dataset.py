@@ -15,6 +15,7 @@ class TrainDataset(Dataset):
 
         self.news, self.news_pattern = load_from_cache(
             [
+                self.__class__.__name__,
                 args.dataset,
                 args.num_words_title,
                 args.num_words_abstract,
@@ -28,8 +29,10 @@ class TrainDataset(Dataset):
             lambda x: logger.info(f'Load news cache from {x}'),
             lambda x: logger.info(f'Save news cache to {x}'),
         )
+
         self.behaviors, self.behaviors_pattern = load_from_cache(
             [
+                self.__class__.__name__,
                 args.dataset,
                 args.num_history,
                 args.num_words_title,
@@ -40,7 +43,11 @@ class TrainDataset(Dataset):
                 behaviors_path,
                 epoch,
             ],
-            lambda: self._process_behaviors(behaviors_path),
+            lambda: self._process_behaviors(
+                behaviors_path,
+                self.news,
+                list(self.news_pattern.values())[-1][-1],
+            ),
             args.cache_dir,
             args.cache_dataset,
             lambda x: logger.info(
@@ -93,7 +100,8 @@ class TrainDataset(Dataset):
         news = torch.from_numpy(news)
         return news, news_pattern
 
-    def _process_behaviors(self, behaviors_path):
+    @staticmethod
+    def _process_behaviors(behaviors_path, news, single_news_length):
         behaviors = pd.read_table(
             behaviors_path,
             converters={
@@ -115,7 +123,6 @@ class TrainDataset(Dataset):
         behaviors.negative_candidates = behaviors.negative_candidates.apply(
             sample_negatives)
 
-        single_news_length = list(self.news_pattern.values())[-1][-1]
         behaviors_attributes2length = {
             'user':
             1,
@@ -143,7 +150,7 @@ class TrainDataset(Dataset):
             if attribute in [
                     'history', 'positive_candidates', 'negative_candidates'
             ]:
-                numpy_array = self.news[numpy_array]
+                numpy_array = news[numpy_array]
                 numpy_array = numpy_array.reshape((numpy_array.shape[0], -1))
 
             behaviors_elements.append(numpy_array)
@@ -166,6 +173,7 @@ class NewsDataset(Dataset):
         super().__init__()
         self.news, self.news_pattern = load_from_cache(
             [
+                TrainDataset.__name__,
                 args.dataset,
                 args.num_words_title,
                 args.num_words_abstract,
@@ -193,35 +201,57 @@ class UserDataset(Dataset):
     """
     def __init__(self, behaviors_path):
         super().__init__()
+
+        self.data = load_from_cache(
+            [
+                self.__class__.__name__,
+                args.dataset,
+                args.num_history,
+                args.dataset_attributes,
+                behaviors_path,
+            ],
+            lambda: self._process_users(behaviors_path),
+            args.cache_dir,
+            args.cache_dataset,
+            lambda x: logger.info(f'Load user cache from {x}'),
+            lambda x: logger.info(f'Save user cache to {x}'),
+        )
+
+    def __len__(self):
+        return len(self.data['history'])
+
+    def __getitem__(self, i):
+        item = {
+            'history': self.data['history'][i],
+            'key': self.data['key'][i],
+        }
+        if 'user' in args.dataset_attributes['behaviors']:
+            item['user'] = self.data['user'][i]
+        if 'history_length' in args.dataset_attributes['behaviors']:
+            item['history_length'] = self.data['history_length'][i]
+        return item
+
+    @staticmethod
+    def _process_users(behaviors_path):
         behaviors = pd.read_table(
             behaviors_path,
             usecols=set(args.dataset_attributes['behaviors'])
             & set(['user', 'history', 'history_length']),
         ).drop_duplicates(ignore_index=True)
-        self.key = behaviors.apply(
+
+        data = {}
+        data['key'] = behaviors.apply(
             lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
         behaviors.history = behaviors.history.apply(literal_eval)
 
-        self.history = torch.from_numpy(np.array(behaviors.history.tolist()))
+        data['history'] = torch.from_numpy(np.array(
+            behaviors.history.tolist()))
         if 'user' in args.dataset_attributes['behaviors']:
-            self.user = torch.from_numpy(behaviors.user.to_numpy())
+            data['user'] = torch.from_numpy(behaviors.user.to_numpy())
         if 'history_length' in args.dataset_attributes['behaviors']:
-            self.history_length = torch.from_numpy(
+            data['history_length'] = torch.from_numpy(
                 behaviors.history_length.to_numpy())
-
-    def __len__(self):
-        return len(self.history)
-
-    def __getitem__(self, i):
-        item = {
-            'history': self.history[i],
-            'key': self.key[i],
-        }
-        if 'user' in args.dataset_attributes['behaviors']:
-            item['user'] = self.user[i]
-        if 'history_length' in args.dataset_attributes['behaviors']:
-            item['history_length'] = self.history_length[i]
-        return item
+        return data
 
 
 class BehaviorsDataset(Dataset):
@@ -230,22 +260,20 @@ class BehaviorsDataset(Dataset):
     """
     def __init__(self, behaviors_path):
         super().__init__()
-        behaviors = pd.read_table(behaviors_path,
-                                  usecols=args.dataset_attributes['behaviors'])
-
-        columns = list(behaviors.columns)
-        for x in ['positive_candidates', 'negative_candidates']:
-            columns.remove(x)
-        self.key = behaviors[columns].apply(
-            lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
-
-        behaviors.positive_candidates = behaviors.positive_candidates.apply(
-            literal_eval)
-        behaviors.negative_candidates = behaviors.negative_candidates.apply(
-            literal_eval)
-
-        self.positive_candidates = behaviors.positive_candidates.tolist()
-        self.negative_candidates = behaviors.negative_candidates.tolist()
+        self.key, self.positive_candidates, self.negative_candidates = load_from_cache(
+            [
+                self.__class__.__name__,
+                args.dataset,
+                args.num_history,
+                args.dataset_attributes,
+                behaviors_path,
+            ],
+            lambda: self._process_behaviors(behaviors_path),
+            args.cache_dir,
+            args.cache_dataset,
+            lambda x: logger.info(f'Load evaluating behaviors cache from {x}'),
+            lambda x: logger.info(f'Save evaluating behaviors cache to {x}'),
+        )
 
     def __len__(self):
         return len(self.key)
@@ -257,6 +285,27 @@ class BehaviorsDataset(Dataset):
             'negative_candidates': self.negative_candidates[i],
         }
         return item
+
+    @staticmethod
+    def _process_behaviors(behaviors_path):
+        behaviors = pd.read_table(behaviors_path,
+                                  usecols=args.dataset_attributes['behaviors'])
+
+        columns = list(behaviors.columns)
+        for x in ['positive_candidates', 'negative_candidates']:
+            columns.remove(x)
+        key = behaviors[columns].apply(
+            lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
+
+        behaviors.positive_candidates = behaviors.positive_candidates.apply(
+            literal_eval)
+        behaviors.negative_candidates = behaviors.negative_candidates.apply(
+            literal_eval)
+
+        positive_candidates = behaviors.positive_candidates.tolist()
+        negative_candidates = behaviors.negative_candidates.tolist()
+
+        return key, positive_candidates, negative_candidates
 
 
 if __name__ == '__main__':

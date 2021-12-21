@@ -107,7 +107,6 @@ def evaluate(model, target, max_count=sys.maxsize):
     behaviors_dataset = BehaviorsDataset(f'data/{args.dataset}/{target}.tsv')
 
     count = 0
-
     tasks = []
 
     with enlighten_manager.counter(
@@ -150,11 +149,13 @@ if __name__ == '__main__':
     checkpoint_path = latest_checkpoint(
         os.path.join(args.checkpoint_dir, f'{args.model}-{args.dataset}'))
     if checkpoint_path is None:
-        logger.error('No checkpoint file found!')
-        exit()
-    logger.info(f"Load saved parameters in {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint)
+        logger.warning(
+            'No checkpoint file found! Evaluating with randomly initiated model'
+        )
+    else:
+        logger.info(f"Load saved parameters in {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint)
     model.eval()
     metrics = evaluate(model, 'test')
     logger.info(f'Metrics on test set\n{dict2table(metrics)}')
