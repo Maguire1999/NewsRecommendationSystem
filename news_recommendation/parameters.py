@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument('--model',
                         type=str,
                         default='NRMS',
-                        choices=['NRMS', 'NAML', 'LSTUR', 'TANR'])
+                        choices=['NRMS', 'NAML', 'LSTUR', 'TANR', 'FedNRMS'])
     parser.add_argument('--loss',
                         type=str,
                         default='CE',
@@ -34,16 +34,13 @@ def parse_args():
                             'adressa-10weeks'
                         ])
     parser.add_argument('--num_epochs', type=int, default=10)
-    parser.add_argument('--num_batches_record_loss', type=int, default=20)
-    parser.add_argument('--num_batches_show_loss', type=int, default=100)
-    parser.add_argument(
-        '--num_batches_validate',
-        type=int,
-        default=1000,
-        help='Number of batchs to check metrics on validation dataset')
+    parser.add_argument('--num_epochs_validate', type=int, default=1)
+    parser.add_argument('--num_units_record_loss', type=int, default=20)
+    parser.add_argument('--num_units_show_loss', type=int, default=100)
     parser.add_argument('--patience', type=int, default=5)
     parser.add_argument('--save_checkpoint', type=str2bool, default=False)
     parser.add_argument('--cache_dataset', type=str2bool, default=True)
+    parser.add_argument('--max_epoch_cache_num', type=int, default=4)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--shuffle', type=str2bool, default=True)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
@@ -81,6 +78,7 @@ def parse_args():
     parser.add_argument('--cache_dir', type=str, default='./cache/')
     parser.add_argument('--show_similarity', type=str2bool, default=True)
     parser.add_argument('--similarity_image_dir', type=str, default='./image/')
+    parser.add_argument('--num_users_per_epoch', type=int, default=50)
     args, _ = parser.parse_known_args()
 
     dataset_attributes = {
@@ -105,7 +103,12 @@ def parse_args():
             'news': ['category', 'title'],
             'behaviors':
             ['history', 'positive_candidates', 'negative_candidates']
-        }
+        },
+        'FedNRMS': {
+            'news': ['title'],
+            'behaviors':
+            ['user', 'history', 'positive_candidates', 'negative_candidates']
+        },
     }
     args.dataset_attributes = dataset_attributes[args.model]
 

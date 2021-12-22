@@ -10,7 +10,7 @@ from news_recommendation.utils import load_from_cache
 
 
 class TrainDataset(Dataset):
-    def __init__(self, behaviors_path, news_path, epoch=1):
+    def __init__(self, behaviors_path, news_path, epoch=0):
         super().__init__()
 
         self.news, self.news_pattern = load_from_cache(
