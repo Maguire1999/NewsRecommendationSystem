@@ -6,9 +6,8 @@ import os
 import datetime
 import copy
 import importlib
-import enlighten
 
-from torch.utils.data import DataLoader, BatchSampler, RandomSampler
+from torch.utils.data import DataLoader, BatchSampler, RandomSampler, SequentialSampler
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
@@ -43,7 +42,7 @@ def train():
 
     start_time = time.time()
     loss_full = []
-    early_stopping = EarlyStopping()
+    early_stopping = EarlyStopping(patience=args.patience)
     best_checkpoint = copy.deepcopy(model.state_dict())
     best_val_metrics = {}
     if args.save_checkpoint:
@@ -62,13 +61,17 @@ def train():
                 dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
                                        f'data/{args.dataset}/news.tsv', epoch)
                 # Use `sampler=BatchSampler(...)` to support batch indexing of dataset, which is faster
-                dataloader = DataLoader(dataset,
-                                        sampler=BatchSampler(
-                                            RandomSampler(dataset),
-                                            batch_size=args.batch_size,
-                                            drop_last=False),
-                                        collate_fn=lambda x: x[0],
-                                        pin_memory=True)
+                dataloader = DataLoader(
+                    dataset,
+                    sampler=BatchSampler(
+                        RandomSampler(dataset)
+                        if args.shuffle else SequentialSampler(dataset),
+                        batch_size=args.batch_size,
+                        drop_last=False,
+                    ),
+                    collate_fn=lambda x: x[0],
+                    pin_memory=True,
+                )
                 with enlighten_manager.counter(total=len(dataloader),
                                                desc='Training batches',
                                                unit='batches',
@@ -121,7 +124,7 @@ def train():
 
                         loss_full.append(loss)
 
-                        if batch % 10 == 0:
+                        if batch % args.num_batches_record_loss == 0:
                             writer.add_scalar('Train/Loss', loss, batch)
 
                         if batch % args.num_batches_show_loss == 0:

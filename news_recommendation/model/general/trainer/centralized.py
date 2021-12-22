@@ -28,8 +28,11 @@ class CentralizedModelTrainer():
                 (torch.ones(y_pred.size(0), 1),
                  torch.zeros(y_pred.size(0), args.negative_sampling_ratio)),
                 dim=1).to(device)
-        else:
+        elif args.loss == 'CE':
             y = torch.zeros(y_pred.size(0)).long().to(device)
+        else:
+            raise NotImplementedError
+
         loss = self.criterion(y_pred, y)
         self.optimizer.zero_grad()
         loss.backward()

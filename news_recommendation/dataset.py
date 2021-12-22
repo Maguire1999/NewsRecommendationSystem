@@ -117,8 +117,9 @@ class TrainDataset(Dataset):
             if len(negatives) > args.negative_sampling_ratio:
                 return random.sample(negatives, args.negative_sampling_ratio)
             else:
-                return negatives + [0] * (args.negative_sampling_ratio -
-                                          len(negatives))
+                return negatives + random.sample(
+                    range(len(news)),
+                    args.negative_sampling_ratio - len(negatives))
 
         behaviors.negative_candidates = behaviors.negative_candidates.apply(
             sample_negatives)
@@ -162,6 +163,7 @@ class TrainDataset(Dataset):
         behaviors = np.concatenate(behaviors_elements, axis=1)
         behaviors = torch.from_numpy(
             behaviors)  # TODO what if loaded from pickle and use gpu
+        # TODO not use behaviors_pattern and compare the speed
         return behaviors, behaviors_pattern
 
 
@@ -193,6 +195,10 @@ class NewsDataset(Dataset):
 
     def __getitem__(self, i):
         return self.news[i]
+
+
+def row2string(row):
+    return '-'.join(row.values.astype(str))
 
 
 class UserDataset(Dataset):
@@ -240,8 +246,7 @@ class UserDataset(Dataset):
         ).drop_duplicates(ignore_index=True)
 
         data = {}
-        data['key'] = behaviors.apply(
-            lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
+        data['key'] = behaviors.apply(row2string, axis=1).tolist()
         behaviors.history = behaviors.history.apply(literal_eval)
 
         data['history'] = torch.from_numpy(np.array(
@@ -255,9 +260,6 @@ class UserDataset(Dataset):
 
 
 class BehaviorsDataset(Dataset):
-    """
-    Load behaviors for evaluation, (user, time) pair as session
-    """
     def __init__(self, behaviors_path):
         super().__init__()
         self.key, self.positive_candidates, self.negative_candidates = load_from_cache(
@@ -294,8 +296,7 @@ class BehaviorsDataset(Dataset):
         columns = list(behaviors.columns)
         for x in ['positive_candidates', 'negative_candidates']:
             columns.remove(x)
-        key = behaviors[columns].apply(
-            lambda row: '-'.join(row.values.astype(str)), axis=1).tolist()
+        key = behaviors[columns].apply(row2string, axis=1).tolist()
 
         behaviors.positive_candidates = behaviors.positive_candidates.apply(
             literal_eval)

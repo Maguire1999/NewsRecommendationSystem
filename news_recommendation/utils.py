@@ -7,6 +7,8 @@ import hashlib
 import pickle
 import numpy as np
 import math
+import random
+import matplotlib.pyplot as plt
 
 from pathlib import Path
 
@@ -147,3 +149,23 @@ class EarlyStopping:
                 early_stop = False
 
         return early_stop, get_better
+
+
+def calculate_cos_similarity(array, filename='image.png'):
+    indexs = list(range(len(array)))
+    random.shuffle(indexs)
+    for i, x in enumerate(indexs):
+        if i == x:
+            indexs[i] = (indexs[i] + 1) % len(array)
+    another_array = array[indexs]
+    array = array / np.linalg.norm(array, axis=1, keepdims=True)
+    another_array = another_array / np.linalg.norm(
+        another_array, axis=1, keepdims=True)
+    data = (array * another_array).sum(axis=1)
+    plt.hist(data, density=True, range=(0, 1), bins=500)
+    plt.ylabel('Probability')
+    plt.xlabel('Cos-sim')
+    plt.title('Cos-sim distribution')
+    plt.savefig(filename, dpi=144)
+    plt.close()
+    return np.mean(data)

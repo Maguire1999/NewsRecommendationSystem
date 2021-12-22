@@ -43,6 +43,11 @@ unzip glove.840B.300d.zip
 rm glove.840B.300d.zip
 ```
 
+Download punkt for NLTK.
+```bash
+python -c "import nltk; nltk.download('punkt')"
+```
+
 Download and process MIND-small dataset. Note MIND Small doesn't have a test set, so we just copy the validation set as test set :)
 
 ```bash
@@ -87,6 +92,7 @@ python -m news_recommendation.data_preprocess.mind \
 ```
 
 Download and process Adressa 1week dataset.
+TODO: use another punkt instead of en for adressa?
 ```bash
 cd $WORKING_DIRECTORY
 mkdir -p data/raw/adressa-1week && cd "$_"

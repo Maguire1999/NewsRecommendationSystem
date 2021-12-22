@@ -6,10 +6,11 @@ import importlib
 
 from multiprocessing import Pool
 from sklearn.metrics import roc_auc_score
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
+from pathlib import Path
 
 from news_recommendation.shared import args, logger, device, enlighten_manager
-from news_recommendation.utils import latest_checkpoint, dict2table
+from news_recommendation.utils import latest_checkpoint, dict2table, calculate_cos_similarity
 from news_recommendation.dataset import NewsDataset, UserDataset, BehaviorsDataset
 
 Model = getattr(
@@ -38,12 +39,6 @@ def mrr_score(y_true, y_score):
     return np.sum(rr_score) / np.sum(y_true)
 
 
-def value2rank(d):
-    values = list(d.values())
-    ranks = [sorted(values, reverse=True).index(x) for x in values]
-    return {k: ranks[i] + 1 for i, k in enumerate(d.keys())}
-
-
 def calculate_single_user_metric(pair):
     try:
         auc = roc_auc_score(*pair)
@@ -56,7 +51,7 @@ def calculate_single_user_metric(pair):
 
 
 @torch.no_grad()
-def evaluate(model, target, max_count=sys.maxsize):
+def evaluate(model, target, max_length=sys.maxsize):
     """
     Args:
         model: model to be evaluated
@@ -81,6 +76,12 @@ def evaluate(model, target, max_count=sys.maxsize):
             news_vector.append(model.get_news_vector(minibatch))
     news_vector = torch.cat(news_vector, dim=0)
 
+    if args.show_similarity:
+        Path(args.similarity_image_dir).mkdir(parents=True, exist_ok=True)
+        logger.info(
+            f"News cos similarity: {calculate_cos_similarity(news_vector.cpu().numpy()[1:], os.path.join(args.similarity_image_dir, 'news.png')):.4f}"
+        )
+
     user_dataset = UserDataset(f'data/{args.dataset}/{target}.tsv')
     user_dataloader = DataLoader(user_dataset,
                                  batch_size=args.batch_size * 16,
@@ -104,20 +105,27 @@ def evaluate(model, target, max_count=sys.maxsize):
             for key, vector in zip(minibatch['key'], user_vector):
                 user2vector[key] = vector
 
+    if args.show_similarity:
+        logger.info(
+            f"User cos similarity: {calculate_cos_similarity(torch.stack(list(user2vector.values()), dim=0).cpu().numpy(), os.path.join(args.similarity_image_dir, 'user.png')):.4f}"
+        )
+
     behaviors_dataset = BehaviorsDataset(f'data/{args.dataset}/{target}.tsv')
 
-    count = 0
-    tasks = []
+    if len(behaviors_dataset) > max_length:
+        if target == 'test':
+            logger.warning(
+                'You are slicing the test dataset, the results may not be complete'
+            )
+        behaviors_dataset = Subset(behaviors_dataset, range(max_length))
 
+    tasks = []
     with enlighten_manager.counter(
             total=len(behaviors_dataset),
             desc='Adding tasks for calculating probabilities',
             leave=False) as pbar:
         for behaviors in behaviors_dataset:
             pbar.update()
-            count += 1
-            if count == max_count:
-                break
 
             candidates = behaviors['positive_candidates'] + behaviors[
                 'negative_candidates']

@@ -8,7 +8,8 @@ from os import path
 from pathlib import Path
 from nltk.tokenize import word_tokenize
 
-from news_recommendation.shared import args, logger
+from news_recommendation.parameters import parse_args
+args = parse_args()
 
 
 def parse_news(
@@ -126,7 +127,7 @@ def parse_behaviors(
     news2int_path,
     user2int_path,
 ):
-    logger.info(f"Parse {source}")
+    print(f"Parse {source}")
     news2int = dict(pd.read_table(news2int_path).to_numpy().tolist())
     user2int = dict(pd.read_table(user2int_path).to_numpy().tolist())
 
@@ -203,7 +204,7 @@ def generate_word_embedding(source, target, word2int_path):
     final_embedding = pd.concat([merged, missed_embedding]).sort_index()
     np.save(target, final_embedding.to_numpy())
 
-    logger.info(
+    print(
         f'Rate of word missed in pretrained embedding: {(len(missed_index)-1)/len(word2int):.4f}'
     )
 
@@ -233,7 +234,7 @@ if __name__ == '__main__':
 
     Path(args.target_dir).mkdir(parents=True, exist_ok=True)
 
-    logger.info('Parse news')
+    print('Parse news')
     parse_news(
         [
             path.join(args.source_dir, x, 'news.tsv')
@@ -245,14 +246,14 @@ if __name__ == '__main__':
         path.join(args.target_dir, 'word2int.tsv'),
     )
 
-    logger.info('Generate word embedding')
+    print('Generate word embedding')
     generate_word_embedding(
         args.glove_path,
         path.join(args.target_dir, 'pretrained_word_embedding.npy'),
         path.join(args.target_dir, 'word2int.tsv'),
     )
 
-    logger.info('Parse behaviors')
+    print('Parse behaviors')
     save_user_id(
         [
             path.join(args.source_dir, x, 'behaviors.tsv')
