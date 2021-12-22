@@ -9,8 +9,8 @@ from news_recommendation.shared import args, logger
 from news_recommendation.utils import load_from_cache
 
 
-class TrainDataset(Dataset):
-    def __init__(self, behaviors_path, news_path, epoch=0):
+class TrainingDataset(Dataset):
+    def __init__(self, behaviors_path, news_path, index=0):
         super().__init__()
 
         self.news, self.news_pattern = load_from_cache(
@@ -41,15 +41,15 @@ class TrainDataset(Dataset):
                 args.negative_sampling_ratio,
                 args.dataset_attributes,
                 behaviors_path,
-                epoch,
+                index,
             ],
             lambda: self._process_behaviors(behaviors_path, self.news),
             args.cache_dir,
             args.cache_dataset,
             lambda x: logger.info(
-                f'Load training behaviors (epoch {epoch}) cache from {x}'),
+                f'Load training behaviors (index {index}) cache from {x}'),
             lambda x: logger.info(
-                f'Save training behaviors (epoch {epoch}) cache to {x}'),
+                f'Save training behaviors (index {index}) cache to {x}'),
         )
 
     def __len__(self):
@@ -149,7 +149,7 @@ class NewsDataset(Dataset):
         super().__init__()
         self.news, self.news_pattern = load_from_cache(
             [
-                TrainDataset.__name__,
+                TrainingDataset.__name__,
                 args.dataset,
                 args.num_words_title,
                 args.num_words_abstract,
@@ -157,7 +157,7 @@ class NewsDataset(Dataset):
                 args.dataset_attributes,
                 news_path,
             ],
-            lambda: TrainDataset._process_news(news_path),
+            lambda: TrainingDataset._process_news(news_path),
             args.cache_dir,
             args.cache_dataset,
             lambda x: logger.info(f'Load news cache from {x}'),
@@ -286,8 +286,8 @@ class BehaviorsDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 
-    dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
-                           f'data/{args.dataset}/news.tsv')
+    dataset = TrainingDataset(f'data/{args.dataset}/train.tsv',
+                              f'data/{args.dataset}/news.tsv')
     dataloader = DataLoader(dataset,
                             sampler=BatchSampler(RandomSampler(dataset),
                                                  batch_size=args.batch_size,

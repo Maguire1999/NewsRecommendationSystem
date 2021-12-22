@@ -3,11 +3,11 @@ import torch
 from .news_encoder import NewsEncoder
 from .user_encoder import UserEncoder
 from news_recommendation.model.general.click_predictor.dot_product import DotProductClickPredictor
-from news_recommendation.model.general.trainer.centralized import CentralizedModelTrainer
+from news_recommendation.model.general.trainer.centralized import CentralizedModel
 from news_recommendation.shared import args
 
 
-class NRMS(torch.nn.Module, CentralizedModelTrainer):
+class NRMS(torch.nn.Module, CentralizedModel):
     """
     NRMS network.
     """
@@ -16,7 +16,6 @@ class NRMS(torch.nn.Module, CentralizedModelTrainer):
         self.news_encoder = NewsEncoder(pretrained_word_embedding)
         self.user_encoder = UserEncoder()
         self.click_predictor = DotProductClickPredictor()
-        super().init(self)
 
     def forward(self, minibatch, news_pattern):
         """
@@ -53,8 +52,7 @@ class NRMS(torch.nn.Module, CentralizedModelTrainer):
         # batch_size, 1 + K
         click_probability = self.click_predictor(candidates_vector,
                                                  user_vector)
-        loss = self.backward(click_probability)
-        return loss
+        return click_probability
 
     def get_news_vector(self, news):
         """

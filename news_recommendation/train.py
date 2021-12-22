@@ -7,17 +7,16 @@ import copy
 import importlib
 import random
 
-from torch.utils.data import DataLoader, BatchSampler, RandomSampler, SequentialSampler
+from torch.utils.data import DataLoader, BatchSampler, RandomSampler, SequentialSampler, Subset
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
-from news_recommendation.shared import args
-from news_recommendation.dataset import TrainDataset
+from news_recommendation.dataset import TrainingDataset
 from news_recommendation.test import evaluate
 from news_recommendation.utils import time_since, dict2table, EarlyStopping
 from news_recommendation.shared import args, logger, device, enlighten_manager
-from news_recommendation.model.general.trainer.centralized import CentralizedModelTrainer
-from news_recommendation.model.general.trainer.federated import FederatedModelTrainer
+from news_recommendation.model.general.trainer.centralized import CentralizedModel
+from news_recommendation.model.general.trainer.federated import FederatedModel
 
 Model = getattr(
     importlib.import_module(f"news_recommendation.model.{args.model}"),
@@ -42,6 +41,9 @@ def train():
     model = Model(pretrained_word_embedding).to(device)
     logger.info(model)
 
+    if isinstance(model, CentralizedModel):
+        model.init_backprop(model.parameters())
+
     start_time = time.time()
     loss_full = []
     early_stopping = EarlyStopping(patience=args.patience)
@@ -52,25 +54,24 @@ def train():
                                       f'{args.model}-{args.dataset}')
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-    unit = 0
-
     datasets = {}
     try:
-        with enlighten_manager.counter(total=args.num_epochs,
-                                       desc='Training epochs',
-                                       unit='epochs',
-                                       leave=False) as epoch_pbar:
-            for epoch in epoch_pbar(range(args.num_epochs)):
-                epoch_hash = epoch % args.max_epoch_cache_num
-                if epoch_hash in datasets:
-                    dataset = datasets[epoch_hash]
-                else:
-                    dataset = TrainDataset(f'data/{args.dataset}/train.tsv',
-                                           f'data/{args.dataset}/news.tsv',
-                                           epoch_hash)
-                    datasets[epoch_hash] = dataset
+        if isinstance(model, CentralizedModel):
+            batch = 0
+            with enlighten_manager.counter(total=args.num_epochs,
+                                           desc='Training epochs',
+                                           unit='epochs',
+                                           leave=False) as epoch_pbar:
+                for epoch in epoch_pbar(range(args.num_epochs)):
+                    epoch_hash = epoch % args.max_training_dataset_cache_num
+                    if epoch_hash in datasets:
+                        dataset = datasets[epoch_hash]
+                    else:
+                        dataset = TrainingDataset(
+                            f'data/{args.dataset}/train.tsv',
+                            f'data/{args.dataset}/news.tsv', epoch_hash)
+                        datasets[epoch_hash] = dataset
 
-                if isinstance(model, CentralizedModelTrainer):
                     # Use `sampler=BatchSampler(...)` to support batch indexing of dataset, which is faster
                     dataloader = DataLoader(
                         dataset,
@@ -89,20 +90,18 @@ def train():
                                                    unit='batches',
                                                    leave=False) as batch_pbar:
                         for minibatch in batch_pbar(dataloader):
-                            unit += 1
-
-                            loss = model(minibatch, dataset.news_pattern)
+                            y_pred = model(minibatch, dataset.news_pattern)
+                            loss = model.backward(y_pred)
                             loss_full.append(loss)
 
-                            if unit % args.num_units_record_loss == 0:
-                                writer.add_scalar('Train/Loss', loss, unit)
-
-                            if unit % args.num_units_show_loss == 0:
+                            if batch % args.num_batches_show_loss == 0:
+                                writer.add_scalar('Train/Loss', loss, batch)
                                 logger.info(
-                                    f"Time {time_since(start_time)}, epoch {epoch}, batch {unit}, current loss {loss:.4f}, average loss {np.mean(loss_full):.4f}, latest average loss {np.mean(loss_full[-10:]):.4f}"
+                                    f"Time {time_since(start_time)}, epoch {epoch}, batch {batch}, current loss {loss:.4f}, average loss {np.mean(loss_full):.4f}, latest average loss {np.mean(loss_full[-10:]):.4f}"
                                 )
+                            batch += 1
 
-                    if (epoch + 1) % args.num_epochs_validate == 0:
+                    if epoch != 0 and epoch % args.num_epochs_validate == 0:
                         model.eval()
                         metrics = evaluate(model, 'val', 200000)
                         model.train()
@@ -128,9 +127,19 @@ def train():
                                     os.path.join(checkpoint_dir,
                                                  f"ckpt-{epoch}.pt"))
 
-                elif isinstance(model, FederatedModelTrainer):
-                    if epoch == 0:
-                        # Only need do once
+        elif isinstance(model, FederatedModel):
+            with enlighten_manager.counter(total=args.num_rounds,
+                                           desc='Training rounds',
+                                           unit='rounds',
+                                           leave=False) as round_pbar:
+                for round in round_pbar(range(args.num_rounds)):
+                    round_hash = round % args.max_training_dataset_cache_num
+                    if round_hash in datasets:
+                        dataset, user2indexs = datasets[round_hash]
+                    else:
+                        dataset = TrainingDataset(
+                            f'data/{args.dataset}/train.tsv',
+                            f'data/{args.dataset}/news.tsv', round_hash)
                         user2indexs = {}
                         for i, user in enumerate(
                                 dataset.data['user'].tolist()):
@@ -138,54 +147,63 @@ def train():
                                 user2indexs[user] = [i]
                             else:
                                 user2indexs[user].append(i)
+                        datasets[round_hash] = dataset, user2indexs
 
                     users = random.sample(user2indexs.keys(),
-                                          args.num_users_per_epoch)
+                                          args.num_users_per_round)
 
                     old_model = copy.deepcopy(model.state_dict())
                     new_model = {}
+
+                    loss = 0
                     with enlighten_manager.counter(total=len(users),
                                                    desc='Training users',
                                                    unit='users',
                                                    leave=False) as user_pbar:
                         for user in user_pbar(users):
-                            unit += 1
-
-                            minibatch = dataset[user2indexs[user]]
                             model.load_state_dict(old_model)
-                            loss = model(minibatch, dataset.news_pattern)
+                            model.init_backprop(model.parameters())
+
+                            dataloader = DataLoader(
+                                Subset(dataset, user2indexs[user]),
+                                batch_size=args.batch_size,
+                                drop_last=False,
+                                shuffle=args.shuffle,
+                            )
+                            for minibatch in dataloader:
+                                y_pred = model(minibatch, dataset.news_pattern)
+                                loss += model.backward(y_pred) * y_pred.size(0)
 
                             for k, v in model.state_dict().items():
                                 if k not in new_model:
-                                    new_model[k] = v
+                                    new_model[k] = v * len(user2indexs[user])
                                 else:
-                                    new_model[k] += v
-
-                            loss_full.append(loss)
-
-                            if unit % args.num_units_record_loss == 0:
-                                writer.add_scalar('Train/Loss', loss, unit)
-
-                            if unit % args.num_units_show_loss == 0:
-                                logger.info(
-                                    f"Time {time_since(start_time)}, epoch {epoch}, user {unit}, current loss {loss:.4f}, average loss {np.mean(loss_full):.4f}, latest average loss {np.mean(loss_full[-10:]):.4f}"
-                                )
+                                    new_model[k] += v * len(user2indexs[user])
 
                     for k in new_model.keys():
-                        new_model[k] = new_model[k] / len(users)
-
+                        new_model[k] /= sum(
+                            len(user2indexs[user]) for user in users)
                     model.load_state_dict(new_model)
 
-                    if (epoch + 1) % args.num_epochs_validate == 0:
+                    loss /= sum(len(user2indexs[user]) for user in users)
+                    loss_full.append(loss)
+
+                    if round % args.num_rounds_show_loss == 0:
+                        writer.add_scalar('Train/Loss', loss, round)
+                        logger.info(
+                            f"Time {time_since(start_time)}, round {round}, current loss {loss:.4f}, average loss {np.mean(loss_full):.4f}, latest average loss {np.mean(loss_full[-10:]):.4f}"
+                        )
+
+                    if round != 0 and round % args.num_rounds_validate == 0:
                         model.eval()
                         metrics = evaluate(model, 'val', 200000)
                         model.train()
                         for metric, value in metrics.items():
                             writer.add_scalar(f'Validation/{metric}', value,
-                                              epoch)
+                                              round)
 
                         logger.info(
-                            f"Time {time_since(start_time)}, epoch {epoch}, metrics\n{dict2table(metrics)}"
+                            f"Time {time_since(start_time)}, round {round}, metrics\n{dict2table(metrics)}"
                         )
 
                         early_stop, get_better = early_stopping(
@@ -200,16 +218,17 @@ def train():
                                 torch.save(
                                     model.state_dict(),
                                     os.path.join(checkpoint_dir,
-                                                 f"ckpt-{epoch}.pt"))
+                                                 f"ckpt-{round}.pt"))
 
-                else:
-                    raise NotImplementedError
+        else:
+            raise NotImplementedError
 
     except KeyboardInterrupt:
         logger.info('Stop in advance')
 
-    logger.info(
-        f'Best metrics on validation set\n{dict2table(best_val_metrics)}')
+    if len(best_val_metrics) != 0:
+        logger.info(
+            f'Best metrics on validation set\n{dict2table(best_val_metrics)}')
 
     model.load_state_dict(best_checkpoint)
     model.eval()

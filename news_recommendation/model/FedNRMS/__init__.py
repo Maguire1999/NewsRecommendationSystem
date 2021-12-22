@@ -3,11 +3,11 @@ import torch
 from .news_encoder import NewsEncoder
 from .user_encoder import UserEncoder
 from news_recommendation.model.general.click_predictor.dot_product import DotProductClickPredictor
-from news_recommendation.model.general.trainer.federated import FederatedModelTrainer
+from news_recommendation.model.general.trainer.federated import FederatedModel
 from news_recommendation.shared import args
 
 
-class FedNRMS(torch.nn.Module, FederatedModelTrainer):
+class FedNRMS(torch.nn.Module, FederatedModel):
     def __init__(self, pretrained_word_embedding=None):
         super().__init__()
         self.news_encoder = NewsEncoder(pretrained_word_embedding)
@@ -21,8 +21,6 @@ class FedNRMS(torch.nn.Module, FederatedModelTrainer):
         Returns:
           click_probability: batch_size, 1 + K
         """
-        super().init(self)
-
         single_news_length = list(news_pattern.values())[-1][-1]
         history = minibatch['history'].view(-1, single_news_length)
         positive_candidates = minibatch['positive_candidates']
@@ -51,8 +49,7 @@ class FedNRMS(torch.nn.Module, FederatedModelTrainer):
         # batch_size, 1 + K
         click_probability = self.click_predictor(candidates_vector,
                                                  user_vector)
-        loss = self.backward(click_probability)
-        return loss
+        return click_probability
 
     def get_news_vector(self, news):
         """

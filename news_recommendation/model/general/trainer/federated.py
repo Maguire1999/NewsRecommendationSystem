@@ -4,8 +4,8 @@ import torch.nn as nn
 from news_recommendation.shared import args, device
 
 
-class FederatedModelTrainer():
-    def init(self, model):
+class FederatedModel():
+    def init_backprop(self, parameters):
         if args.loss == 'BCE':
             self.criterion = nn.BCEWithLogitsLoss()
         elif args.loss == 'CE':
@@ -14,11 +14,10 @@ class FederatedModelTrainer():
             raise NotImplementedError
 
         if args.optimizer == 'Adam':
-            self.optimizer = torch.optim.Adam(model.parameters(),
+            self.optimizer = torch.optim.Adam(parameters,
                                               lr=args.learning_rate)
         elif args.optimizer == 'SGD':
-            self.optimizer = torch.optim.SGD(model.parameters(),
-                                             lr=args.learning_rate)
+            self.optimizer = torch.optim.SGD(parameters, lr=args.learning_rate)
         else:
             raise NotImplementedError
 
