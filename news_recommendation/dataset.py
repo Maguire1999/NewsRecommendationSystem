@@ -30,7 +30,7 @@ class TrainDataset(Dataset):
             lambda x: logger.info(f'Save news cache to {x}'),
         )
 
-        self.behaviors, self.behaviors_pattern = load_from_cache(
+        self.data = load_from_cache(
             [
                 self.__class__.__name__,
                 args.dataset,
@@ -43,11 +43,7 @@ class TrainDataset(Dataset):
                 behaviors_path,
                 epoch,
             ],
-            lambda: self._process_behaviors(
-                behaviors_path,
-                self.news,
-                list(self.news_pattern.values())[-1][-1],
-            ),
+            lambda: self._process_behaviors(behaviors_path, self.news),
             args.cache_dir,
             args.cache_dataset,
             lambda x: logger.info(
@@ -57,10 +53,10 @@ class TrainDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.behaviors)
+        return len(self.data['history'])
 
     def __getitem__(self, i):
-        return self.behaviors[i]
+        return {key: self.data[key][i] for key in self.data.keys()}
 
     @staticmethod
     def _process_news(news_path):
@@ -101,7 +97,7 @@ class TrainDataset(Dataset):
         return news, news_pattern
 
     @staticmethod
-    def _process_behaviors(behaviors_path, news, single_news_length):
+    def _process_behaviors(behaviors_path, news):
         behaviors = pd.read_table(
             behaviors_path,
             converters={
@@ -124,25 +120,10 @@ class TrainDataset(Dataset):
         behaviors.negative_candidates = behaviors.negative_candidates.apply(
             sample_negatives)
 
-        behaviors_attributes2length = {
-            'user':
-            1,
-            'history':
-            args.num_history * single_news_length,
-            'history_length':
-            1,
-            'positive_candidates':
-            single_news_length,
-            'negative_candidates':
-            args.negative_sampling_ratio * single_news_length,
-        }
-        behaviors_elements = []
-        behaviors_pattern = {}
-        current_length = 0
-
+        data = {}
         for attribute in args.dataset_attributes['behaviors']:
             if attribute in ['user', 'history_length', 'positive_candidates']:
-                numpy_array = behaviors[attribute].to_numpy()[..., np.newaxis]
+                numpy_array = behaviors[attribute].to_numpy()
             elif attribute in ['history', 'negative_candidates']:
                 numpy_array = np.array(behaviors[attribute].tolist())
             else:
@@ -151,20 +132,13 @@ class TrainDataset(Dataset):
             if attribute in [
                     'history', 'positive_candidates', 'negative_candidates'
             ]:
-                numpy_array = news[numpy_array]
-                numpy_array = numpy_array.reshape((numpy_array.shape[0], -1))
+                torch_array = news[numpy_array]
+            else:
+                torch_array = torch.from_numpy(numpy_array)
 
-            behaviors_elements.append(numpy_array)
-            behaviors_pattern[attribute] = (
-                current_length,
-                current_length + behaviors_attributes2length[attribute])
-            current_length += behaviors_attributes2length[attribute]
+            data[attribute] = torch_array
 
-        behaviors = np.concatenate(behaviors_elements, axis=1)
-        behaviors = torch.from_numpy(
-            behaviors)  # TODO what if loaded from pickle and use gpu
-        # TODO not use behaviors_pattern and compare the speed
-        return behaviors, behaviors_pattern
+        return data
 
 
 class NewsDataset(Dataset):

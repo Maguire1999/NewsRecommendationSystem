@@ -16,8 +16,8 @@ def parse_args():
 
     parser.add_argument('--model',
                         type=str,
-                        default='NAIVE',
-                        choices=['NAIVE', 'NRMS', 'NAML', 'LSTUR', 'TANR'])
+                        default='NRMS',
+                        choices=['NRMS', 'NAML', 'LSTUR', 'TANR'])
     parser.add_argument('--loss',
                         type=str,
                         default='CE',
@@ -84,11 +84,6 @@ def parse_args():
     args, _ = parser.parse_known_args()
 
     dataset_attributes = {
-        'NAIVE': {
-            'news': ['title'],
-            'behaviors':
-            ['history', 'positive_candidates', 'negative_candidates']
-        },
         'NRMS': {
             'news': ['title'],
             'behaviors':

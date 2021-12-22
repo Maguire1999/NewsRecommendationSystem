@@ -79,49 +79,7 @@ def train():
                     for minibatch in batch_pbar(dataloader):
                         batch += 1
 
-                        single_news_length = list(
-                            dataset.news_pattern.values())[-1][-1]
-                        history = minibatch[:, dataset.behaviors_pattern[
-                            'history'][0]:dataset.behaviors_pattern['history']
-                                            [1]].reshape(
-                                                -1, single_news_length)
-
-                        positive_candidates = minibatch[:, dataset.behaviors_pattern[
-                            'positive_candidates'][0]:dataset.behaviors_pattern[
-                                'positive_candidates'][1]]
-                        negative_candidates = minibatch[:, dataset.behaviors_pattern[
-                            'negative_candidates'][0]:dataset.behaviors_pattern[
-                                'negative_candidates'][1]].reshape(
-                                    -1, single_news_length)
-
-                        if 'user' in dataset.behaviors_pattern:
-                            user = minibatch[:,
-                                             dataset.behaviors_pattern['user']
-                                             [0]:dataset.
-                                             behaviors_pattern['user'][1]]
-                        if 'history_length' in dataset.behaviors_pattern:
-                            history_length = minibatch[:, dataset.
-                                                       behaviors_pattern[
-                                                           'history_length']
-                                                       [0]:dataset.
-                                                       behaviors_pattern[
-                                                           'history_length']
-                                                       [1]]
-
-                        if args.model == 'LSTUR':
-                            loss = model(user, history, history_length,
-                                         positive_candidates,
-                                         negative_candidates)
-                        elif args.model in ['NAIVE', 'NRMS']:
-                            loss = model(history, positive_candidates,
-                                         negative_candidates)
-                        elif args.model == 'NAML':
-                            loss = model(history, positive_candidates,
-                                         negative_candidates,
-                                         dataset.news_pattern)
-                        else:
-                            raise ValueError
-
+                        loss = model(minibatch, dataset.news_pattern)
                         loss_full.append(loss)
 
                         if batch % args.num_batches_record_loss == 0:

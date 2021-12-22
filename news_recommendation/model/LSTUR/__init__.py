@@ -41,7 +41,7 @@ class LSTUR(torch.nn.Module):
             int(args.num_filters * 1.5),
             padding_idx=0)
 
-    def forward(self, user, clicked_news_length, candidate_news, clicked_news):
+    def forward(self, minibatch):
         """
         Args:
             user: batch_size,
@@ -65,6 +65,8 @@ class LSTUR(torch.nn.Module):
         Returns:
             click_probability: batch_size
         """
+        import ipdb
+        ipdb.set_trace()
         # batch_size, 1 + K, num_filters * 3
         candidate_news_vector = torch.stack(
             [self.news_encoder(x) for x in candidate_news], dim=1)

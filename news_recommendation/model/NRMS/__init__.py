@@ -18,13 +18,19 @@ class NRMS(torch.nn.Module, CentralizedModelTrainer):
         self.click_predictor = DotProductClickPredictor()
         super().init(self)
 
-    def forward(self, history, positive_candidates, negative_candidates):
+    def forward(self, minibatch, news_pattern):
         """
         Args:
 
         Returns:
           click_probability: batch_size, 1 + K
         """
+        single_news_length = list(news_pattern.values())[-1][-1]
+        history = minibatch['history'].view(-1, single_news_length)
+        positive_candidates = minibatch['positive_candidates']
+        negative_candidates = minibatch['negative_candidates'].view(
+            -1, single_news_length)
+
         vector = self.news_encoder(
             torch.cat((history, positive_candidates, negative_candidates),
                       dim=0))
@@ -32,6 +38,7 @@ class NRMS(torch.nn.Module, CentralizedModelTrainer):
             (history.shape[0], positive_candidates.shape[0],
              negative_candidates.shape[0]),
             dim=0)
+
         history_vector = history_vector.view(-1, args.num_history,
                                              args.word_embedding_dim)
         positive_candidates_vector = positive_candidates_vector.view(
@@ -53,9 +60,6 @@ class NRMS(torch.nn.Module, CentralizedModelTrainer):
         """
         Args:
             news:
-                {
-                    "title": batch_size * num_words_title
-                },
         Returns:
             (shape) batch_size, word_embedding_dim
         """
