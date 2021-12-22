@@ -25,14 +25,18 @@ class NAIVE(torch.nn.Module, CentralizedModelTrainer):
         vector = self.news_encoder(
             torch.cat((history, positive_candidates, negative_candidates),
                       dim=0))
-        history_vector, candidates_vector = vector.split(
-            (history.shape[0],
-             positive_candidates.shape[0] + negative_candidates.shape[0]),
+        history_vector, positive_candidates_vector, negative_candidates_vector = vector.split(
+            (history.shape[0], positive_candidates.shape[0],
+             negative_candidates.shape[0]),
             dim=0)
         history_vector = history_vector.view(-1, args.num_history,
                                              args.word_embedding_dim)
-        candidates_vector = candidates_vector.view(
-            -1, 1 + args.negative_sampling_ratio, args.word_embedding_dim)
+        positive_candidates_vector = positive_candidates_vector.view(
+            -1, 1, args.word_embedding_dim)
+        negative_candidates_vector = negative_candidates_vector.view(
+            -1, args.negative_sampling_ratio, args.word_embedding_dim)
+        candidates_vector = torch.cat(
+            (positive_candidates_vector, negative_candidates_vector), dim=1)
 
         # batch_size, word_embedding_dim
         user_vector = self.user_encoder(history_vector)
