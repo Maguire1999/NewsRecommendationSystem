@@ -9,6 +9,7 @@ import numpy as np
 import math
 import random
 import matplotlib.pyplot as plt
+import sys
 
 from pathlib import Path
 
@@ -24,7 +25,7 @@ def time_since(since):
 
 def create_logger(args):
     logger = logging.getLogger(__name__)
-    coloredlogs.install(level='DEBUG',
+    coloredlogs.install(level='INFO',
                         logger=logger,
                         fmt='%(asctime)s %(levelname)s %(message)s')
     log_dir = os.path.join(args.log_dir, f'{args.model}-{args.dataset}')
@@ -34,8 +35,15 @@ def create_logger(args):
         f"{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}.txt"
     )
     logger.info(f'Check {log_file_path} for the log of this run')
-    file_hander = logging.FileHandler(log_file_path)
-    logger.addHandler(file_hander)
+    file_handler = logging.FileHandler(log_file_path)
+    logger.addHandler(file_handler)
+
+    class ExitingHandler(logging.Handler):
+        def emit(self, record):
+            if record.levelno >= logging.ERROR:
+                sys.exit(-1)
+
+    logger.addHandler(ExitingHandler())
     return logger
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from nltk.tokenize import word_tokenize
 
 from news_recommendation.parameters import parse_args
-args = parse_args()
+args, extra_args = parse_args()
 
 
 def parse_news(
@@ -228,9 +228,14 @@ if __name__ == '__main__':
     )
 
     # Merge local and global args
-    args_local, _ = parser.parse_known_args()
+    args_local, extra_args_local = parser.parse_known_args()
     for k, v in args_local.__dict__.items():
         args.__dict__[k] = v
+
+    for x in extra_args + extra_args_local:
+        if x.startswith('--'):
+            x = x[2:].split('=')[0]
+            assert x in args, f'Unknown args: {x}'
 
     Path(args.target_dir).mkdir(parents=True, exist_ok=True)
 

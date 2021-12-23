@@ -86,7 +86,7 @@ def parse_args():
     parser.add_argument('--cache_dir', type=str, default='./cache/')
     parser.add_argument('--show_similarity', type=str2bool, default=True)
     parser.add_argument('--similarity_image_dir', type=str, default='./image/')
-    args, _ = parser.parse_known_args()
+    args, extra_args = parser.parse_known_args()
 
     dataset_attributes = {
         'NRMS': {
@@ -133,4 +133,4 @@ def parse_args():
         # Suppress the error if is running data processing
         pass
 
-    return args
+    return args, extra_args
