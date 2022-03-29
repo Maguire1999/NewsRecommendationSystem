@@ -40,7 +40,7 @@ def parse_args():
 
     parser.add_argument('--num_rounds', type=int, default=10000)
     parser.add_argument('--num_rounds_validate', type=int, default=1000)
-    parser.add_argument('--num_rounds_show_loss', type=int, default=20)
+    parser.add_argument('--num_rounds_show_loss', type=int, default=50)
     parser.add_argument('--num_users_per_round', type=int, default=50)
 
     parser.add_argument('--patience', type=int, default=5)
@@ -51,7 +51,7 @@ def parse_args():
                         default=4)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--shuffle', type=str2bool, default=True)
-    parser.add_argument('--learning_rate', type=float, default=0.0001)
+    parser.add_argument('--learning_rate', type=float, default=0.0003)
     parser.add_argument('--num_workers', type=int, default=16)
     parser.add_argument('--num_history',
                         type=int,
@@ -85,7 +85,6 @@ def parse_args():
     parser.add_argument('--tensorboard_runs_dir', type=str, default='./runs/')
     parser.add_argument('--cache_dir', type=str, default='./cache/')
     parser.add_argument('--show_similarity', type=str2bool, default=True)
-    parser.add_argument('--similarity_image_dir', type=str, default='./image/')
     args, extra_args = parser.parse_known_args()
 
     dataset_attributes = {

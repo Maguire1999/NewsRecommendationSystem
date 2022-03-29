@@ -1,6 +1,5 @@
 import torch
 import enlighten
-import sys
 
 from news_recommendation.parameters import parse_args
 from news_recommendation.utils import create_logger

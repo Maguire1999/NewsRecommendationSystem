@@ -55,13 +55,13 @@ def dict2table(d, k_fn=str, v_fn=None, corner_name=''):
 
         def v_fn(x):
             # Precision for abs(x):
-            # [0, 0.1)    6
-            # [0.1-1)    5
-            # [1-10)    4
-            # [10-100)    3
-            # [100-1000)    2
-            # [1000,oo)    1
-            precision = max(1, min(5 - math.ceil(math.log(abs(x), 10)), 6))
+            # [0, 0.01)     6
+            # [0.01, 0.1)   5
+            # [0.1, 1)      4
+            # [1, 10)       3
+            # [10, 100)     2
+            # [100, oo)     1
+            precision = max(1, min(4 - math.ceil(math.log(abs(x), 10)), 6))
             return f'{x:.{precision}f}'
 
     def parse_header(d, depth=0):
@@ -159,7 +159,7 @@ class EarlyStopping:
         return early_stop, get_better
 
 
-def calculate_cos_similarity(array, filename='image.png'):
+def calculate_cos_similarity(array, filename=None):
     indexs = list(range(len(array)))
     random.shuffle(indexs)
     for i, x in enumerate(indexs):
@@ -174,6 +174,7 @@ def calculate_cos_similarity(array, filename='image.png'):
     plt.ylabel('Probability')
     plt.xlabel('Cos-sim')
     plt.title('Cos-sim distribution')
-    plt.savefig(filename, dpi=144)
+    if filename is not None:
+        plt.savefig(filename, dpi=144)
     plt.close()
     return np.mean(data)

@@ -170,6 +170,7 @@ def train():
                                 drop_last=False,
                                 shuffle=args.shuffle,
                             )
+
                             for minibatch in dataloader:
                                 y_pred = model(minibatch, dataset.news_pattern)
                                 loss += model.backward(y_pred) * y_pred.size(0)

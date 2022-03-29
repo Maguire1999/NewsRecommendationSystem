@@ -7,7 +7,6 @@ import importlib
 from multiprocessing import Pool
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Subset
-from pathlib import Path
 
 from news_recommendation.shared import args, logger, device, enlighten_manager
 from news_recommendation.utils import latest_checkpoint, dict2table, calculate_cos_similarity
@@ -77,9 +76,8 @@ def evaluate(model, target, max_length=sys.maxsize):
     news_vector = torch.cat(news_vector, dim=0)
 
     if args.show_similarity:
-        Path(args.similarity_image_dir).mkdir(parents=True, exist_ok=True)
         logger.info(
-            f"News cos similarity: {calculate_cos_similarity(news_vector.cpu().numpy()[1:], os.path.join(args.similarity_image_dir, 'news.png')):.4f}"
+            f"News cos similarity: {calculate_cos_similarity(news_vector.cpu().numpy()[1:]):.4f}"
         )
 
     user_dataset = UserDataset(f'data/{args.dataset}/{target}.tsv')
@@ -107,7 +105,7 @@ def evaluate(model, target, max_length=sys.maxsize):
 
     if args.show_similarity:
         logger.info(
-            f"User cos similarity: {calculate_cos_similarity(torch.stack(list(user2vector.values()), dim=0).cpu().numpy(), os.path.join(args.similarity_image_dir, 'user.png')):.4f}"
+            f"User cos similarity: {calculate_cos_similarity(torch.stack(list(user2vector.values()), dim=0).cpu().numpy()):.4f}"
         )
 
     behaviors_dataset = BehaviorsDataset(f'data/{args.dataset}/{target}.tsv')
@@ -140,9 +138,15 @@ def evaluate(model, target, max_length=sys.maxsize):
 
             tasks.append((y_true, y_pred))
 
-    logger.info('Calculating probabilities with multiprocessing')
     with Pool(processes=args.num_workers) as pool:
-        results = pool.map(calculate_single_user_metric, tasks)
+        results = pool.imap_unordered(calculate_single_user_metric,
+                                      tasks,
+                                      chunksize=64)
+        with enlighten_manager.counter(
+                total=len(tasks),
+                desc='Calculating probabilities with multiprocessing',
+                leave=False) as pbar:
+            results = list(pbar(results))
 
     return dict(
         zip(['AUC', 'MRR', 'nDCG@5', 'nDCG@10'],
