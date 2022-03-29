@@ -127,7 +127,7 @@ def load_from_cache(
         data = generator()
         Path(cache_dir).mkdir(parents=True, exist_ok=True)
         with open(cache_path, 'wb') as f:
-            pickle.dump(data, f)
+            pickle.dump(data, f, protocol=4)
         save_cache_callback(cache_path)
         return data
 
