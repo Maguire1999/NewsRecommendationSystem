@@ -26,16 +26,13 @@ class NewsEncoder(torch.nn.Module):
     def forward(self, news):
         """
         Args:
-            news:
-                {
-                    "title": batch_size * num_words_title
-                }
+            
         Returns:
             (shape) batch_size, word_embedding_dim
         """
         # batch_size, num_words_title, word_embedding_dim
         news_vector = F.dropout(
-            self.word_embedding(news.to(device)),  # TODO
+            self.word_embedding(news),  # TODO
             p=args.dropout_probability,
             training=self.training)
         # batch_size, num_words_title, word_embedding_dim

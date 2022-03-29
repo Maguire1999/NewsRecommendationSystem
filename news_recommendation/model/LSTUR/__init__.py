@@ -103,7 +103,7 @@ class LSTUR(torch.nn.Module):
         """
         # ini: batch_size, num_filters * 3
         # con: batch_size, num_filters * 1.5
-        user = self.user_embedding(user.to(device))
+        user = self.user_embedding(user)
         # batch_size, num_filters * 3
         return self.user_encoder(user, clicked_news_length, history_vector)
 

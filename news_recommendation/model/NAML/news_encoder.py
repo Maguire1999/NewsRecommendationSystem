@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from news_recommendation.model.general.attention.additive import AdditiveAttention
-from news_recommendation.shared import device
+from news_recommendation.shared import args, device
 
 
 class TextEncoder(torch.nn.Module):
@@ -48,9 +48,8 @@ class ElementEncoder(torch.nn.Module):
 
 
 class NewsEncoder(torch.nn.Module):
-    def __init__(self, config, pretrained_word_embedding):
+    def __init__(self, pretrained_word_embedding):
         super().__init__()
-        self.config = config
         if pretrained_word_embedding is None:
             word_embedding = nn.Embedding(args.num_words,
                                           args.word_embedding_dim,
@@ -81,25 +80,21 @@ class NewsEncoder(torch.nn.Module):
             self.final_attention = AdditiveAttention(args.query_vector_dim,
                                                      args.num_filters)
 
-    def forward(self, news):
+    def forward(self, news, news_pattern):
         """
         Args:
-            news:
-                {
-                    "category": batch_size,
-                    "subcategory": batch_size,
-                    "title": batch_size * num_words_title,
-                    "abstract": batch_size * num_words_abstract,
-                }
+            
         Returns:
             (shape) batch_size, num_filters
         """
         text_vectors = [
-            encoder(news[name].to(device))
+            encoder(
+                news.narrow(1, news_pattern[name][0],
+                            news_pattern[name][1] - news_pattern[name][0]))
             for name, encoder in self.text_encoders.items()
         ]
         element_vectors = [
-            encoder(news[name].to(device))
+            encoder(news.narrow(1, news_pattern[name][0], 1).squeeze(dim=1))
             for name, encoder in self.element_encoders.items()
         ]
 

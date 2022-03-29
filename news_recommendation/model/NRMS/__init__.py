@@ -54,7 +54,7 @@ class NRMS(torch.nn.Module, CentralizedModel):
                                                  user_vector)
         return click_probability
 
-    def get_news_vector(self, news):
+    def get_news_vector(self, news, news_pattern):
         """
         Args:
             news:

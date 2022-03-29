@@ -72,7 +72,9 @@ def evaluate(model, target, max_length=sys.maxsize):
                                    desc='Calculating vectors for news',
                                    leave=False) as pbar:
         for minibatch in pbar(news_dataloader):
-            news_vector.append(model.get_news_vector(minibatch))
+            news_vector.append(
+                model.get_news_vector(minibatch.to(device),
+                                      news_dataset.news_pattern))
     news_vector = torch.cat(news_vector, dim=0)
 
     if args.show_similarity:
@@ -117,11 +119,11 @@ def evaluate(model, target, max_length=sys.maxsize):
             )
         behaviors_dataset = Subset(behaviors_dataset, range(max_length))
 
+    # TODO: Single Producer (Adding tasks) & Multiple Consumer (calculating metrics)
     tasks = []
-    with enlighten_manager.counter(
-            total=len(behaviors_dataset),
-            desc='Adding tasks for calculating probabilities',
-            leave=False) as pbar:
+    with enlighten_manager.counter(total=len(behaviors_dataset),
+                                   desc='Adding tasks for calculating metrics',
+                                   leave=False) as pbar:
         for behaviors in behaviors_dataset:
             pbar.update()
 
@@ -144,7 +146,7 @@ def evaluate(model, target, max_length=sys.maxsize):
                                       chunksize=64)
         with enlighten_manager.counter(
                 total=len(tasks),
-                desc='Calculating probabilities with multiprocessing',
+                desc='Calculating metrics with multiprocessing',
                 leave=False) as pbar:
             results = list(pbar(results))
 

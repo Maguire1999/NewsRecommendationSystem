@@ -59,7 +59,7 @@ class TANR(torch.nn.Module):
                       dim=1).view(-1, args.num_filters))
         # batch_size * (1 + K + num_history)
         y = torch.stack([x['category'] for x in candidate_news + clicked_news],
-                        dim=1).flatten().to(device)
+                        dim=1).flatten()
         class_weight = torch.ones(args.num_categories).to(device)
         class_weight[0] = 0
         criterion = nn.CrossEntropyLoss(weight=class_weight)

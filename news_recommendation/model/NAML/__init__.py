@@ -3,72 +3,67 @@ import torch
 from .news_encoder import NewsEncoder
 from .user_encoder import UserEncoder
 from news_recommendation.model.general.click_predictor.dot_product import DotProductClickPredictor
+from news_recommendation.model.general.trainer.centralized import CentralizedModel
+from news_recommendation.shared import args
 
 
-class NAML(torch.nn.Module):
+class NAML(torch.nn.Module, CentralizedModel):
     """
     NAML network.
     Input 1 + K candidate news and a list of user clicked news, produce the click probability.
     """
-    def __init__(self, config, pretrained_word_embedding=None):
+    def __init__(self, pretrained_word_embedding=None):
         super().__init__()
-        self.config = config
-        self.news_encoder = NewsEncoder(config, pretrained_word_embedding)
-        self.user_encoder = UserEncoder(config)
+        self.news_encoder = NewsEncoder(pretrained_word_embedding)
+        self.user_encoder = UserEncoder()
         self.click_predictor = DotProductClickPredictor()
 
-    def forward(self, candidate_news, clicked_news):
+    def forward(self, minibatch, news_pattern):
         """
         Args:
-            candidate_news:
-                [
-                    {
-                        "category": batch_size,
-                        "subcategory": batch_size,
-                        "title": batch_size * num_words_title,
-                        "abstract": batch_size * num_words_abstract
-                    } * (1 + K)
-                ]
-            clicked_news:
-                [
-                    {
-                        "category": batch_size,
-                        "subcategory": batch_size,
-                        "title": batch_size * num_words_title,
-                        "abstract": batch_size * num_words_abstract
-                    } * num_history
-                ]
+            
         Returns:
-            click_probability: batch_size
+            click_probability: batch_size, 1 + K
         """
-        # batch_size, 1 + K, num_filters
-        candidate_news_vector = torch.stack(
-            [self.news_encoder(x) for x in candidate_news], dim=1)
-        # batch_size, num_history, num_filters
-        history_vector = torch.stack(
-            [self.news_encoder(x) for x in clicked_news], dim=1)
-        # batch_size, num_filters
+        single_news_length = list(news_pattern.values())[-1][-1]
+        history = minibatch['history'].view(-1, single_news_length)
+        positive_candidates = minibatch['positive_candidates']
+        negative_candidates = minibatch['negative_candidates'].view(
+            -1, single_news_length)
+
+        vector = self.news_encoder(
+            torch.cat((history, positive_candidates, negative_candidates),
+                      dim=0), news_pattern)
+        history_vector, positive_candidates_vector, negative_candidates_vector = vector.split(
+            (history.shape[0], positive_candidates.shape[0],
+             negative_candidates.shape[0]),
+            dim=0)
+
+        history_vector = history_vector.view(-1, args.num_history,
+                                             args.word_embedding_dim)
+        positive_candidates_vector = positive_candidates_vector.view(
+            -1, 1, args.word_embedding_dim)
+        negative_candidates_vector = negative_candidates_vector.view(
+            -1, args.negative_sampling_ratio, args.word_embedding_dim)
+        candidates_vector = torch.cat(
+            (positive_candidates_vector, negative_candidates_vector), dim=1)
+
+        # batch_size, word_embedding_dim
         user_vector = self.user_encoder(history_vector)
         # batch_size, 1 + K
-        click_probability = self.click_predictor(candidate_news_vector,
+        click_probability = self.click_predictor(candidates_vector,
                                                  user_vector)
         return click_probability
 
-    def get_news_vector(self, news):
+    def get_news_vector(self, news, news_pattern):
         """
         Args:
-            news:
-                {
-                    "category": batch_size,
-                    "subcategory": batch_size,
-                    "title": batch_size * num_words_title,
-                    "abstract": batch_size * num_words_abstract
-                }
+            
         Returns:
             (shape) batch_size, num_filters
         """
         # batch_size, num_filters
-        return self.news_encoder(news)
+        return self.news_encoder(news, news_pattern)
 
     def get_user_vector(self, history_vector):
         """

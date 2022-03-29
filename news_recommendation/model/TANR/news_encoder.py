@@ -37,7 +37,7 @@ class NewsEncoder(torch.nn.Module):
             (shape) batch_size, num_filters
         """
         # batch_size, num_words_title, word_embedding_dim
-        title_vector = F.dropout(self.word_embedding(news['title'].to(device)),
+        title_vector = F.dropout(self.word_embedding(news['title']),
                                  p=args.dropout_probability,
                                  training=self.training)
         # batch_size, num_filters, num_words_title

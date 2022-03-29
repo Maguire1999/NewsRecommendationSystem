@@ -34,9 +34,9 @@ def parse_args():
                             'adressa-10weeks'
                         ])
 
-    parser.add_argument('--num_epochs', type=int, default=10)
+    parser.add_argument('--num_epochs', type=int, default=20)
     parser.add_argument('--num_epochs_validate', type=int, default=1)
-    parser.add_argument('--num_batches_show_loss', type=int, default=100)
+    parser.add_argument('--num_batches_show_loss', type=int, default=200)
 
     parser.add_argument('--num_rounds', type=int, default=10000)
     parser.add_argument('--num_rounds_validate', type=int, default=1000)

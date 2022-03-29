@@ -44,18 +44,17 @@ class NewsEncoder(torch.nn.Module):
         # Part 1: calculate category_vector
 
         # batch_size, num_filters
-        category_vector = self.category_embedding(news['category'].to(device))
+        category_vector = self.category_embedding(news['category'])
 
         # Part 2: calculate subcategory_vector
 
         # batch_size, num_filters
-        subcategory_vector = self.category_embedding(
-            news['subcategory'].to(device))
+        subcategory_vector = self.category_embedding(news['subcategory'])
 
         # Part 3: calculate weighted_title_vector
 
         # batch_size, num_words_title, word_embedding_dim
-        title_vector = F.dropout(self.word_embedding(news['title'].to(device)),
+        title_vector = F.dropout(self.word_embedding(news['title']),
                                  p=args.dropout_probability,
                                  training=self.training)
         # batch_size, num_filters, num_words_title

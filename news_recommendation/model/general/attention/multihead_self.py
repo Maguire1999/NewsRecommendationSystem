@@ -60,7 +60,7 @@ class MultiHeadSelfAttention(nn.Module):
         if length is not None:
             maxlen = Q.size(1)
             attn_mask = torch.arange(maxlen).to(device).expand(
-                batch_size, maxlen) < length.to(device).view(-1, 1)
+                batch_size, maxlen) < length.view(-1, 1)
             attn_mask = attn_mask.unsqueeze(1).expand(batch_size, maxlen,
                                                       maxlen)
             attn_mask = attn_mask.unsqueeze(1).repeat(1,

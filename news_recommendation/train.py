@@ -47,8 +47,8 @@ def train():
     start_time = time.time()
     loss_full = []
     early_stopping = EarlyStopping(patience=args.patience)
-    best_checkpoint = copy.deepcopy(model.state_dict())
-    best_val_metrics = {}
+    best_checkpoint = None
+    best_val_metrics = None
     if args.save_checkpoint:
         checkpoint_dir = os.path.join(args.checkpoint_dir,
                                       f'{args.model}-{args.dataset}')
@@ -90,6 +90,10 @@ def train():
                                                    unit='batches',
                                                    leave=False) as batch_pbar:
                         for minibatch in batch_pbar(dataloader):
+                            minibatch = {
+                                k: v.to(device)
+                                for k, v in minibatch.items()
+                            }
                             y_pred = model(minibatch, dataset.news_pattern)
                             loss = model.backward(y_pred)
                             loss_full.append(loss)
@@ -227,11 +231,11 @@ def train():
     except KeyboardInterrupt:
         logger.info('Stop in advance')
 
-    if len(best_val_metrics) != 0:
+    if best_val_metrics is not None:
         logger.info(
             f'Best metrics on validation set\n{dict2table(best_val_metrics)}')
-
-    model.load_state_dict(best_checkpoint)
+    if best_checkpoint is not None:
+        model.load_state_dict(best_checkpoint)
     model.eval()
     metrics = evaluate(model, 'test')
     logger.info(f'Metrics on test set\n{dict2table(metrics)}')
