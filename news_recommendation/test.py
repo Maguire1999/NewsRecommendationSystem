@@ -4,7 +4,8 @@ import sys
 import os
 import importlib
 
-from multiprocessing import Pool
+from multiprocessing import Process, SimpleQueue
+from queue import Empty
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Subset
 
@@ -46,7 +47,7 @@ def calculate_single_user_metric(pair):
         ndcg10 = ndcg_score(*pair, 10)
         return [auc, mrr, ndcg5, ndcg10]
     except ValueError:
-        return [np.nan] * 4
+        return None
 
 
 @torch.no_grad()
@@ -119,11 +120,30 @@ def evaluate(model, target, max_length=sys.maxsize):
             )
         behaviors_dataset = Subset(behaviors_dataset, range(max_length))
 
-    # TODO: Single Producer (Adding tasks) & Multiple Consumer (calculating metrics)
-    tasks = []
-    with enlighten_manager.counter(total=len(behaviors_dataset),
-                                   desc='Adding tasks for calculating metrics',
-                                   leave=False) as pbar:
+    def worker_function(task_queue, result_queue):
+        results = []
+        for task in iter(task_queue.get, None):
+            result = calculate_single_user_metric(task)
+            if result is not None:
+                results.append(result)
+
+        result_queue.put((len(results), np.average(np.array(results), axis=0)))
+        result_queue.put(None)
+
+    task_queue = SimpleQueue()
+    result_queue = SimpleQueue()
+
+    workers = []
+    for _ in range(args.num_workers):
+        worker = Process(target=worker_function,
+                         args=(task_queue, result_queue))
+        worker.start()
+        workers.append(worker)
+
+    with enlighten_manager.counter(
+            total=len(behaviors_dataset),
+            desc='Calculating metrics with multiprocessing',
+            leave=False) as pbar:
         for behaviors in behaviors_dataset:
             pbar.update()
 
@@ -138,21 +158,30 @@ def evaluate(model, target, max_length=sys.maxsize):
             y_true = [1] * len(behaviors['positive_candidates']) + [0] * len(
                 behaviors['negative_candidates'])
 
-            tasks.append((y_true, y_pred))
+            task_queue.put((y_true, y_pred))
 
-    with Pool(processes=args.num_workers) as pool:
-        results = pool.imap_unordered(calculate_single_user_metric,
-                                      tasks,
-                                      chunksize=64)
-        with enlighten_manager.counter(
-                total=len(tasks),
-                desc='Calculating metrics with multiprocessing',
-                leave=False) as pbar:
-            results = list(pbar(results))
+    for _ in range(args.num_workers):
+        task_queue.put(None)
+
+    results = []
+    none_count = 0
+    while True:
+        result = result_queue.get()
+        if result is None:
+            none_count += 1
+            if none_count == args.num_workers:
+                break
+        else:
+            results.append(result)
+
+    for worker in workers:
+        worker.join()
 
     return dict(
         zip(['AUC', 'MRR', 'nDCG@5', 'nDCG@10'],
-            np.nanmean(np.array(results), axis=0)))
+            np.average(np.array(list(zip(*results))[1]),
+                       axis=0,
+                       weights=list(zip(*results))[0])))
 
 
 if __name__ == '__main__':
