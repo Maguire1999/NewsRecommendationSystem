@@ -5,7 +5,6 @@ import os
 import importlib
 
 from multiprocessing import Process, SimpleQueue
-from queue import Empty
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Subset
 
@@ -170,6 +169,7 @@ def evaluate(model, target, max_length=sys.maxsize):
         if result is None:
             none_count += 1
             if none_count == args.num_workers:
+                assert len(results) == args.num_workers
                 break
         else:
             results.append(result)

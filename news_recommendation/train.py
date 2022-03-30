@@ -90,6 +90,9 @@ def train():
                                                    unit='batches',
                                                    leave=False) as batch_pbar:
                         for minibatch in batch_pbar(dataloader):
+                            if args.dry_run:
+                                continue
+
                             minibatch = {
                                 k: v.to(device)
                                 for k, v in minibatch.items()
@@ -105,9 +108,9 @@ def train():
                                 )
                             batch += 1
 
-                    if epoch != 0 and epoch % args.num_epochs_validate == 0:
+                    if epoch % args.num_epochs_validate == 0:
                         model.eval()
-                        metrics = evaluate(model, 'val', 200000)
+                        metrics = evaluate(model, 'val')
                         model.train()
                         for metric, value in metrics.items():
                             writer.add_scalar(f'Validation/{metric}', value,
@@ -165,6 +168,9 @@ def train():
                                                    unit='users',
                                                    leave=False) as user_pbar:
                         for user in user_pbar(users):
+                            if args.dry_run:
+                                continue
+
                             model.load_state_dict(old_model)
                             model.init_backprop(model.parameters())
 
@@ -201,7 +207,7 @@ def train():
 
                     if round != 0 and round % args.num_rounds_validate == 0:
                         model.eval()
-                        metrics = evaluate(model, 'val', 200000)
+                        metrics = evaluate(model, 'val')
                         model.train()
                         for metric, value in metrics.items():
                             writer.add_scalar(f'Validation/{metric}', value,

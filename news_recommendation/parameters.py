@@ -85,6 +85,7 @@ def parse_args():
     parser.add_argument('--tensorboard_runs_dir', type=str, default='./runs/')
     parser.add_argument('--cache_dir', type=str, default='./cache/')
     parser.add_argument('--show_similarity', type=str2bool, default=True)
+    parser.add_argument('--dry_run', type=str2bool, default=False)
     args, extra_args = parser.parse_known_args()
 
     dataset_attributes = {
