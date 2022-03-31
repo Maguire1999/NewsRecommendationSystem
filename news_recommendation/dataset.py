@@ -149,11 +149,12 @@ def row2string(row):
 class UserDataset(Dataset):
     """
     Load users for evaluation, duplicated rows will be dropped
+    Note that the "user" here is not a "regular" user
     """
     def __init__(self, behaviors_path):
         super().__init__()
 
-        self.data = load_from_cache(
+        self.user, self.user2index = load_from_cache(
             [
                 self.__class__.__name__,
                 args.dataset,
@@ -169,17 +170,16 @@ class UserDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.data['history'])
+        return len(self.user2index)
 
     def __getitem__(self, i):
         item = {
-            'history': self.data['history'][i],
-            'key': self.data['key'][i],
+            'history': self.user['history'][i],
         }
         if 'user' in args.dataset_attributes['behaviors']:
-            item['user'] = self.data['user'][i]
+            item['user'] = self.user['user'][i]
         if 'history_length' in args.dataset_attributes['behaviors']:
-            item['history_length'] = self.data['history_length'][i]
+            item['history_length'] = self.user['history_length'][i]
         return item
 
     @staticmethod
@@ -190,24 +190,28 @@ class UserDataset(Dataset):
             & set(['user', 'history', 'history_length']),
         ).drop_duplicates(ignore_index=True)
 
-        data = {}
-        data['key'] = behaviors.apply(row2string, axis=1).tolist()
+        user = {}
+        user2index = {
+            x: i
+            for i, x in enumerate(
+                behaviors.apply(row2string, axis=1).tolist())
+        }
         behaviors.history = behaviors.history.apply(literal_eval)
 
-        data['history'] = torch.from_numpy(np.array(
+        user['history'] = torch.from_numpy(np.array(
             behaviors.history.tolist()))
         if 'user' in args.dataset_attributes['behaviors']:
-            data['user'] = torch.from_numpy(behaviors.user.to_numpy())
+            user['user'] = torch.from_numpy(behaviors.user.to_numpy())
         if 'history_length' in args.dataset_attributes['behaviors']:
-            data['history_length'] = torch.from_numpy(
+            user['history_length'] = torch.from_numpy(
                 behaviors.history_length.to_numpy())
-        return data
+        return user, user2index
 
 
 class EvaluationBehaviorsDataset(Dataset):
-    def __init__(self, behaviors_path):
+    def __init__(self, behaviors_path, user2index):
         super().__init__()
-        self.key, self.positive_candidates, self.negative_candidates = load_from_cache(
+        self.user_index, self.positive_candidates, self.negative_candidates = load_from_cache(
             [
                 self.__class__.__name__,
                 args.dataset,
@@ -215,7 +219,7 @@ class EvaluationBehaviorsDataset(Dataset):
                 args.dataset_attributes['behaviors'],
                 behaviors_path,
             ],
-            lambda: self._process_behaviors(behaviors_path),
+            lambda: self._process_behaviors(behaviors_path, user2index),
             args.cache_dir,
             args.cache_dataset,
             lambda x: logger.info(f'Load evaluating behaviors cache from {x}'),
@@ -223,35 +227,34 @@ class EvaluationBehaviorsDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.key)
+        return len(self.user_index)
 
     def __getitem__(self, i):
         item = {
-            'key': self.key[i],
+            'user_index': self.user_index[i],
             'positive_candidates': self.positive_candidates[i],
             'negative_candidates': self.negative_candidates[i],
         }
         return item
 
     @staticmethod
-    def _process_behaviors(behaviors_path):
+    def _process_behaviors(behaviors_path, user2index):
         behaviors = pd.read_table(behaviors_path,
                                   usecols=args.dataset_attributes['behaviors'])
 
         columns = list(behaviors.columns)
         for x in ['positive_candidates', 'negative_candidates']:
             columns.remove(x)
-        key = behaviors[columns].apply(row2string, axis=1).tolist()
 
-        behaviors.positive_candidates = behaviors.positive_candidates.apply(
-            literal_eval)
-        behaviors.negative_candidates = behaviors.negative_candidates.apply(
-            literal_eval)
+        user_index = behaviors[columns].apply(row2string,
+                                              axis=1).map(user2index).tolist()
 
-        positive_candidates = behaviors.positive_candidates.tolist()
-        negative_candidates = behaviors.negative_candidates.tolist()
+        positive_candidates = behaviors.positive_candidates.apply(
+            literal_eval).tolist()
+        negative_candidates = behaviors.negative_candidates.apply(
+            literal_eval).tolist()
 
-        return key, positive_candidates, negative_candidates
+        return user_index, positive_candidates, negative_candidates
 
 
 if __name__ == '__main__':

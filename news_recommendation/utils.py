@@ -121,8 +121,9 @@ def load_from_cache(
     )
     if os.path.isfile(cache_path):
         with open(cache_path, 'rb') as f:
+            data = pickle.load(f)
             load_cache_callback(cache_path)
-            return pickle.load(f)
+            return data
     else:
         data = generator()
         Path(cache_dir).mkdir(parents=True, exist_ok=True)

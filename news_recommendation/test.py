@@ -67,19 +67,19 @@ def evaluate(model, target, max_length=sys.maxsize):
                                  batch_size=args.batch_size * 16,
                                  shuffle=False,
                                  drop_last=False)
-    news_vector = []
+    news_vectors = []
     with enlighten_manager.counter(total=len(news_dataloader),
                                    desc='Calculating vectors for news',
                                    leave=False) as pbar:
         for minibatch in pbar(news_dataloader):
-            news_vector.append(
+            news_vectors.append(
                 model.get_news_vector(minibatch.to(device),
                                       news_dataset.news_pattern))
-    news_vector = torch.cat(news_vector, dim=0)
+    news_vectors = torch.cat(news_vectors, dim=0)
 
     if args.show_similarity:
         logger.info(
-            f"News cos similarity: {calculate_cos_similarity(news_vector.cpu().numpy()[1:]):.4f}"
+            f"News cos similarity: {calculate_cos_similarity(news_vectors.cpu().numpy()[1:]):.4f}"
         )
 
     user_dataset = UserDataset(f'data/{args.dataset}/{target}.tsv')
@@ -88,30 +88,31 @@ def evaluate(model, target, max_length=sys.maxsize):
                                  shuffle=False,
                                  drop_last=False)
 
-    user2vector = {}
+    user_vectors = []
     with enlighten_manager.counter(total=len(user_dataloader),
                                    desc='Calculating vectors for users',
                                    leave=False) as pbar:
         for minibatch in pbar(user_dataloader):
             if args.model == 'LSTUR':
-                user_vector = model.get_user_vector(
-                    news_vector[minibatch['history']],
-                    news_vector[minibatch['user']],
-                    news_vector[minibatch['history_length']],
-                )
+                user_vectors.append(
+                    model.get_user_vector(
+                        news_vectors[minibatch['history']],
+                        news_vectors[minibatch['user']],
+                        news_vectors[minibatch['history_length']],
+                    ))
             else:
-                user_vector = model.get_user_vector(
-                    news_vector[minibatch['history']])
-            for key, vector in zip(minibatch['key'], user_vector):
-                user2vector[key] = vector
+                user_vectors.append(
+                    model.get_user_vector(news_vectors[minibatch['history']]))
+
+    user_vectors = torch.cat(user_vectors, dim=0)
 
     if args.show_similarity:
         logger.info(
-            f"User cos similarity: {calculate_cos_similarity(torch.stack(list(user2vector.values()), dim=0).cpu().numpy()):.4f}"
+            f"User cos similarity: {calculate_cos_similarity(user_vectors.cpu().numpy()):.4f}"
         )
 
     behaviors_dataset = EvaluationBehaviorsDataset(
-        f'data/{args.dataset}/{target}.tsv')
+        f'data/{args.dataset}/{target}.tsv', user_dataset.user2index)
 
     if len(behaviors_dataset) > max_length:
         if target == 'test':
@@ -149,10 +150,9 @@ def evaluate(model, target, max_length=sys.maxsize):
 
             candidates = behaviors['positive_candidates'] + behaviors[
                 'negative_candidates']
-            candidates_vector = news_vector[candidates]
-            user_vector = user2vector[behaviors['key']]
-            click_probability = model.get_prediction(candidates_vector,
-                                                     user_vector)
+            news_vector = news_vectors[candidates]
+            user_vector = user_vectors[behaviors['user_index']]
+            click_probability = model.get_prediction(news_vector, user_vector)
 
             y_pred = click_probability.tolist()
             y_true = [1] * len(behaviors['positive_candidates']) + [0] * len(
