@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Subset
 
 from news_recommendation.shared import args, logger, device, enlighten_manager
 from news_recommendation.utils import latest_checkpoint, dict2table, calculate_cos_similarity
-from news_recommendation.dataset import NewsDataset, UserDataset, BehaviorsDataset
+from news_recommendation.dataset import NewsDataset, UserDataset, EvaluationBehaviorsDataset
 
 Model = getattr(
     importlib.import_module(f"news_recommendation.model.{args.model}"),
@@ -110,7 +110,8 @@ def evaluate(model, target, max_length=sys.maxsize):
             f"User cos similarity: {calculate_cos_similarity(torch.stack(list(user2vector.values()), dim=0).cpu().numpy()):.4f}"
         )
 
-    behaviors_dataset = BehaviorsDataset(f'data/{args.dataset}/{target}.tsv')
+    behaviors_dataset = EvaluationBehaviorsDataset(
+        f'data/{args.dataset}/{target}.tsv')
 
     if len(behaviors_dataset) > max_length:
         if target == 'test':

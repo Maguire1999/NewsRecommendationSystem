@@ -9,10 +9,9 @@ from news_recommendation.shared import args, logger
 from news_recommendation.utils import load_from_cache
 
 
-class TrainingDataset(Dataset):
-    def __init__(self, behaviors_path, news_path, index=0):
+class NewsDataset(Dataset):
+    def __init__(self, news_path):
         super().__init__()
-
         self.news, self.news_pattern = load_from_cache(
             [
                 self.__class__.__name__,
@@ -20,7 +19,7 @@ class TrainingDataset(Dataset):
                 args.num_words_title,
                 args.num_words_abstract,
                 args.word_frequency_threshold,
-                args.dataset_attributes,
+                args.dataset_attributes['news'],
                 news_path,
             ],
             lambda: self._process_news(news_path),
@@ -30,33 +29,11 @@ class TrainingDataset(Dataset):
             lambda x: logger.info(f'Save news cache to {x}'),
         )
 
-        self.data = load_from_cache(
-            [
-                self.__class__.__name__,
-                args.dataset,
-                args.num_history,
-                args.num_words_title,
-                args.num_words_abstract,
-                args.word_frequency_threshold,
-                args.negative_sampling_ratio,
-                args.dataset_attributes,
-                behaviors_path,
-                index,
-            ],
-            lambda: self._process_behaviors(behaviors_path, self.news),
-            args.cache_dir,
-            args.cache_dataset,
-            lambda x: logger.info(
-                f'Load training behaviors (index {index}) cache from {x}'),
-            lambda x: logger.info(
-                f'Save training behaviors (index {index}) cache to {x}'),
-        )
-
     def __len__(self):
-        return len(self.data['history'])
+        return len(self.news)
 
     def __getitem__(self, i):
-        return {key: self.data[key][i] for key in self.data.keys()}
+        return self.news[i]
 
     @staticmethod
     def _process_news(news_path):
@@ -96,8 +73,39 @@ class TrainingDataset(Dataset):
         news = torch.from_numpy(news)
         return news, news_pattern
 
+
+class TrainingBehaviorsDataset(Dataset):
+    def __init__(self, behaviors_path, news_length, index=0):
+        super().__init__()
+
+        self.data = load_from_cache(
+            [
+                self.__class__.__name__,
+                args.dataset,
+                args.num_history,
+                args.negative_sampling_ratio,
+                args.dataset_attributes['behaviors'],
+                behaviors_path,
+                news_length,
+                index,
+            ],
+            lambda: self._process_behaviors(behaviors_path, news_length),
+            args.cache_dir,
+            args.cache_dataset,
+            lambda x: logger.info(
+                f'Load training behaviors (index {index}) cache from {x}'),
+            lambda x: logger.info(
+                f'Save training behaviors (index {index}) cache to {x}'),
+        )
+
+    def __len__(self):
+        return len(self.data['history'])
+
+    def __getitem__(self, i):
+        return {key: self.data[key][i] for key in self.data.keys()}
+
     @staticmethod
-    def _process_behaviors(behaviors_path, news):
+    def _process_behaviors(behaviors_path, news_length):
         behaviors = pd.read_table(
             behaviors_path,
             converters={
@@ -114,7 +122,7 @@ class TrainingDataset(Dataset):
                 return random.sample(negatives, args.negative_sampling_ratio)
             else:
                 return negatives + random.sample(
-                    range(len(news)),
+                    range(news_length),
                     args.negative_sampling_ratio - len(negatives))
 
         behaviors.negative_candidates = behaviors.negative_candidates.apply(
@@ -129,46 +137,9 @@ class TrainingDataset(Dataset):
             else:
                 raise ValueError
 
-            if attribute in [
-                    'history', 'positive_candidates', 'negative_candidates'
-            ]:
-                torch_array = news[numpy_array]
-            else:
-                torch_array = torch.from_numpy(numpy_array)
-
-            data[attribute] = torch_array
+            data[attribute] = torch.from_numpy(numpy_array)
 
         return data
-
-
-class NewsDataset(Dataset):
-    """
-    Load news for evaluation.
-    """
-    def __init__(self, news_path):
-        super().__init__()
-        self.news, self.news_pattern = load_from_cache(
-            [
-                TrainingDataset.__name__,
-                args.dataset,
-                args.num_words_title,
-                args.num_words_abstract,
-                args.word_frequency_threshold,
-                args.dataset_attributes,
-                news_path,
-            ],
-            lambda: TrainingDataset._process_news(news_path),
-            args.cache_dir,
-            args.cache_dataset,
-            lambda x: logger.info(f'Load news cache from {x}'),
-            lambda x: logger.info(f'Save news cache to {x}'),
-        )
-
-    def __len__(self):
-        return len(self.news)
-
-    def __getitem__(self, i):
-        return self.news[i]
 
 
 def row2string(row):
@@ -187,7 +158,7 @@ class UserDataset(Dataset):
                 self.__class__.__name__,
                 args.dataset,
                 args.num_history,
-                args.dataset_attributes,
+                args.dataset_attributes['behaviors'],
                 behaviors_path,
             ],
             lambda: self._process_users(behaviors_path),
@@ -233,7 +204,7 @@ class UserDataset(Dataset):
         return data
 
 
-class BehaviorsDataset(Dataset):
+class EvaluationBehaviorsDataset(Dataset):
     def __init__(self, behaviors_path):
         super().__init__()
         self.key, self.positive_candidates, self.negative_candidates = load_from_cache(
@@ -241,7 +212,7 @@ class BehaviorsDataset(Dataset):
                 self.__class__.__name__,
                 args.dataset,
                 args.num_history,
-                args.dataset_attributes,
+                args.dataset_attributes['behaviors'],
                 behaviors_path,
             ],
             lambda: self._process_behaviors(behaviors_path),
@@ -286,8 +257,8 @@ class BehaviorsDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 
-    dataset = TrainingDataset(f'data/{args.dataset}/train.tsv',
-                              f'data/{args.dataset}/news.tsv')
+    dataset = TrainingBehaviorsDataset(f'data/{args.dataset}/train.tsv',
+                                       f'data/{args.dataset}/news.tsv')
     dataloader = DataLoader(dataset,
                             sampler=BatchSampler(RandomSampler(dataset),
                                                  batch_size=args.batch_size,

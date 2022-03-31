@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, BatchSampler, RandomSampler, Sequential
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
-from news_recommendation.dataset import TrainingDataset
+from news_recommendation.dataset import NewsDataset, TrainingBehaviorsDataset
 from news_recommendation.test import evaluate
 from news_recommendation.utils import time_since, dict2table, EarlyStopping
 from news_recommendation.shared import args, logger, device, enlighten_manager
@@ -54,6 +54,7 @@ def train():
                                       f'{args.model}-{args.dataset}')
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
+    news_dataset = NewsDataset(f'data/{args.dataset}/news.tsv')
     datasets = {}
     try:
         if isinstance(model, CentralizedModel):
@@ -67,21 +68,21 @@ def train():
                     if epoch_hash in datasets:
                         dataset = datasets[epoch_hash]
                     else:
-                        dataset = TrainingDataset(
+                        dataset = TrainingBehaviorsDataset(
                             f'data/{args.dataset}/train.tsv',
-                            f'data/{args.dataset}/news.tsv', epoch_hash)
+                            len(news_dataset), epoch_hash)
                         datasets[epoch_hash] = dataset
 
                     # Use `sampler=BatchSampler(...)` to support batch indexing of dataset, which is faster
                     dataloader = DataLoader(
                         dataset,
+                        batch_size=None,
                         sampler=BatchSampler(
                             RandomSampler(dataset)
                             if args.shuffle else SequentialSampler(dataset),
                             batch_size=args.batch_size,
                             drop_last=False,
                         ),
-                        collate_fn=lambda x: x[0],
                         pin_memory=True,
                     )
 
@@ -93,11 +94,18 @@ def train():
                             if args.dry_run:
                                 continue
 
-                            minibatch = {
-                                k: v.to(device)
-                                for k, v in minibatch.items()
-                            }
-                            y_pred = model(minibatch, dataset.news_pattern)
+                            for k in minibatch.keys():
+                                if k in [
+                                        'history', 'positive_candidates',
+                                        'negative_candidates'
+                                ]:
+                                    minibatch[k] = news_dataset.news[
+                                        minibatch[k]]
+
+                                minibatch[k] = minibatch[k].to(device)
+
+                            y_pred = model(minibatch,
+                                           news_dataset.news_pattern)
                             loss = model.backward(y_pred)
                             loss_full.append(loss)
 
@@ -144,9 +152,9 @@ def train():
                     if round_hash in datasets:
                         dataset, user2indexs = datasets[round_hash]
                     else:
-                        dataset = TrainingDataset(
+                        dataset = TrainingBehaviorsDataset(
                             f'data/{args.dataset}/train.tsv',
-                            f'data/{args.dataset}/news.tsv', round_hash)
+                            len(news_dataset), round_hash)
                         user2indexs = {}
                         for i, user in enumerate(
                                 dataset.data['user'].tolist()):
@@ -182,7 +190,8 @@ def train():
                             )
 
                             for minibatch in dataloader:
-                                y_pred = model(minibatch, dataset.news_pattern)
+                                y_pred = model(minibatch,
+                                               news_dataset.news_pattern)
                                 loss += model.backward(y_pred) * y_pred.size(0)
 
                             for k, v in model.state_dict().items():
