@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from news_recommendation.model.general.attention.additive import AdditiveAttention
-from news_recommendation.shared import args, device
+from news_recommendation.shared import args
 
 
 class TextEncoder(torch.nn.Module):
@@ -11,7 +10,8 @@ class TextEncoder(torch.nn.Module):
                  window_size, query_vector_dim, dropout_probability):
         super().__init__()
         self.word_embedding = word_embedding
-        self.dropout_probability = dropout_probability
+        self.dropout = nn.Dropout(dropout_probability)
+        self.relu = nn.ReLU()
         self.CNN = nn.Conv2d(1,
                              num_filters, (window_size, word_embedding_dim),
                              padding=(int((window_size - 1) / 2), 0))
@@ -20,16 +20,12 @@ class TextEncoder(torch.nn.Module):
 
     def forward(self, text):
         # batch_size, num_words_text, word_embedding_dim
-        text_vector = F.dropout(self.word_embedding(text),
-                                p=self.dropout_probability,
-                                training=self.training)
+        text_vector = self.dropout(self.word_embedding(text))
         # batch_size, num_filters, num_words_title
         convoluted_text_vector = self.CNN(
             text_vector.unsqueeze(dim=1)).squeeze(dim=3)
         # batch_size, num_filters, num_words_title
-        activated_text_vector = F.dropout(F.relu(convoluted_text_vector),
-                                          p=self.dropout_probability,
-                                          training=self.training)
+        activated_text_vector = self.dropout(self.relu(convoluted_text_vector))
 
         # batch_size, num_filters
         text_vector = self.additive_attention(
@@ -42,9 +38,10 @@ class ElementEncoder(torch.nn.Module):
         super().__init__()
         self.embedding = embedding
         self.linear = nn.Linear(linear_input_dim, linear_output_dim)
+        self.relu = nn.ReLU()
 
     def forward(self, element):
-        return F.relu(self.linear(self.embedding(element)))
+        return self.relu(self.linear(self.embedding(element)))
 
 
 class NewsEncoder(torch.nn.Module):

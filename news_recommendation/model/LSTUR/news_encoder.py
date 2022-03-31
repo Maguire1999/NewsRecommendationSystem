@@ -1,15 +1,15 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from news_recommendation.model.general.attention.additive import AdditiveAttention
-from news_recommendation.shared import args, device
+from news_recommendation.shared import args
 
 
 class NewsEncoder(torch.nn.Module):
-    def __init__(self, config, pretrained_word_embedding):
+    def __init__(self, pretrained_word_embedding):
         super().__init__()
-        self.config = config
+        self.dropout = nn.Dropout(p=args.dropout_probability)
+        self.relu = nn.ReLU()
         if pretrained_word_embedding is None:
             self.word_embedding = nn.Embedding(args.num_words,
                                                args.word_embedding_dim,
@@ -54,16 +54,13 @@ class NewsEncoder(torch.nn.Module):
         # Part 3: calculate weighted_title_vector
 
         # batch_size, num_words_title, word_embedding_dim
-        title_vector = F.dropout(self.word_embedding(news['title']),
-                                 p=args.dropout_probability,
-                                 training=self.training)
+        title_vector = self.dropout(self.word_embedding(news['title']))
         # batch_size, num_filters, num_words_title
         convoluted_title_vector = self.title_CNN(
             title_vector.unsqueeze(dim=1)).squeeze(dim=3)
         # batch_size, num_filters, num_words_title
-        activated_title_vector = F.dropout(F.relu(convoluted_title_vector),
-                                           p=args.dropout_probability,
-                                           training=self.training)
+        activated_title_vector = self.dropout(
+            self.relu(convoluted_title_vector))
         # batch_size, num_filters
         weighted_title_vector = self.title_attention(
             activated_title_vector.transpose(1, 2))

@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .news_encoder import NewsEncoder
 from .user_encoder import UserEncoder
 from news_recommendation.model.general.click_predictor.dot_product import DotProductClickPredictor
-from news_recommendation.shared import args, device
+from news_recommendation.shared import args
 
 
 class LSTUR(torch.nn.Module):
@@ -13,7 +12,7 @@ class LSTUR(torch.nn.Module):
     LSTUR network.
     Input 1 + K candidate news and a list of user clicked news, produce the click probability.
     """
-    def __init__(self, config, pretrained_word_embedding=None):
+    def __init__(self, pretrained_word_embedding=None):
         """
         # ini
         user embedding: num_filters * 3
@@ -30,9 +29,9 @@ class LSTUR(torch.nn.Module):
         hidden: num_filter * 1.5
         """
         super().__init__()
-        self.config = config
-        self.news_encoder = NewsEncoder(config, pretrained_word_embedding)
-        self.user_encoder = UserEncoder(config)
+        self.dropout_2d = nn.Dropout2d(p=args.masking_probability)
+        self.news_encoder = NewsEncoder(pretrained_word_embedding)
+        self.user_encoder = UserEncoder()
         self.click_predictor = DotProductClickPredictor()
         assert int(args.num_filters * 1.5) == args.num_filters * 1.5
         self.user_embedding = nn.Embedding(
@@ -73,10 +72,8 @@ class LSTUR(torch.nn.Module):
         # ini: batch_size, num_filters * 3
         # con: batch_size, num_filters * 1.5
         # TODO what if not drop
-        user = F.dropout2d(self.user_embedding(
-            user.to(device)).unsqueeze(dim=0),
-                           p=args.masking_probability,
-                           training=self.training).squeeze(dim=0)
+        user = self.dropout_2d(
+            self.user_embedding(user).unsqueeze(dim=0)).squeeze(dim=0)
         # batch_size, num_history, num_filters * 3
         history_vector = torch.stack(
             [self.news_encoder(x) for x in clicked_news], dim=1)

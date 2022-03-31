@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument('--cache_dataset', type=str2bool, default=True)
     parser.add_argument('--max_training_dataset_cache_num',
                         type=int,
-                        default=4)
+                        default=8)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--shuffle', type=str2bool, default=True)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
