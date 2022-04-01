@@ -51,7 +51,7 @@ class FedNRMS(torch.nn.Module, FederatedModel):
                                                  user_vector)
         return click_probability
 
-    def get_news_vector(self, news):
+    def get_news_vector(self, news, news_pattern):
         """
         Args:
             news:

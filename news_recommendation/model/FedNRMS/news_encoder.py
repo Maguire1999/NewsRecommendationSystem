@@ -26,10 +26,7 @@ class NewsEncoder(torch.nn.Module):
     def forward(self, news):
         """
         Args:
-            news:
-                {
-                    "title": batch_size * num_words_title
-                }
+
         Returns:
             (shape) batch_size, word_embedding_dim
         """

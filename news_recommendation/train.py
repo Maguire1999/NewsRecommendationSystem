@@ -100,9 +100,9 @@ def train():
                                         'negative_candidates'
                                 ]:
                                     minibatch[k] = news_dataset.news[
-                                        minibatch[k]]
-
-                                minibatch[k] = minibatch[k].to(device)
+                                        minibatch[k]].to(device)
+                                else:
+                                    minibatch[k] = minibatch[k].to(device)
 
                             y_pred = model(minibatch,
                                            news_dataset.news_pattern)
@@ -164,8 +164,9 @@ def train():
                                 user2indexs[user].append(i)
                         datasets[round_hash] = dataset, user2indexs
 
-                    users = random.sample(user2indexs.keys(),
-                                          args.num_users_per_round)
+                    users = random.sample(
+                        user2indexs.keys(), args.num_users_per_round
+                    )  # TODO if sampling without replacement, will score be higher?
 
                     old_model = copy.deepcopy(model.state_dict())
                     new_model = {}
@@ -190,6 +191,16 @@ def train():
                             )
 
                             for minibatch in dataloader:
+                                for k in minibatch.keys():
+                                    if k in [
+                                            'history', 'positive_candidates',
+                                            'negative_candidates'
+                                    ]:
+                                        minibatch[k] = news_dataset.news[
+                                            minibatch[k]].to(device)
+                                    else:
+                                        minibatch[k] = minibatch[k].to(device)
+
                                 y_pred = model(minibatch,
                                                news_dataset.news_pattern)
                                 loss += model.backward(y_pred) * y_pred.size(0)

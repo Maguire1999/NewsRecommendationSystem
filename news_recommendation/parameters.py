@@ -38,9 +38,9 @@ def parse_args():
     parser.add_argument('--num_epochs_validate', type=int, default=1)
     parser.add_argument('--num_batches_show_loss', type=int, default=200)
 
-    parser.add_argument('--num_rounds', type=int, default=10000)
+    parser.add_argument('--num_rounds', type=int, default=20000)
     parser.add_argument('--num_rounds_validate', type=int, default=1000)
-    parser.add_argument('--num_rounds_show_loss', type=int, default=50)
+    parser.add_argument('--num_rounds_show_loss', type=int, default=100)
     parser.add_argument('--num_users_per_round', type=int, default=50)
 
     parser.add_argument('--patience', type=int, default=5)
