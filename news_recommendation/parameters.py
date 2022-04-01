@@ -52,7 +52,8 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--shuffle', type=str2bool, default=True)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
-    parser.add_argument('--num_workers', type=int, default=8)
+    parser.add_argument('--num_scoring_workers', type=int, default=4)
+    parser.add_argument('--num_metrics_workers', type=int, default=16)
     parser.add_argument('--num_history',
                         type=int,
                         default=50,

@@ -74,7 +74,8 @@ class NRMS(torch.nn.Module, CentralizedModel):
         # batch_size, word_embedding_dim
         return self.user_encoder(history_vector)
 
-    def get_prediction(self, news_vector, user_vector):
+    @staticmethod
+    def get_prediction(news_vector, user_vector):
         """
         Args:
             news_vector: candidate_size, word_embedding_dim
@@ -83,6 +84,5 @@ class NRMS(torch.nn.Module, CentralizedModel):
             click_probability: candidate_size
         """
         # candidate_size
-        return self.click_predictor(
-            news_vector.unsqueeze(dim=0),
-            user_vector.unsqueeze(dim=0)).squeeze(dim=0)
+        return torch.mm(news_vector,
+                        user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)

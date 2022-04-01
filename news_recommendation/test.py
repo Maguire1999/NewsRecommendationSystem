@@ -1,12 +1,11 @@
 import numpy as np
 import torch
-import sys
 import os
 import importlib
 
-from multiprocessing import Process, SimpleQueue
+from torch.multiprocessing import Process, SimpleQueue, set_start_method
 from sklearn.metrics import roc_auc_score
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 
 from news_recommendation.shared import args, logger, device, enlighten_manager
 from news_recommendation.utils import latest_checkpoint, dict2table, calculate_cos_similarity
@@ -46,22 +45,45 @@ def calculate_single_user_metric(pair):
         ndcg10 = ndcg_score(*pair, 10)
         return [auc, mrr, ndcg5, ndcg10]
     except ValueError:
-        return None
+        return [np.nan] * 4
+
+
+def scoring_worker_fn(index, task_queue, mode, news_vectors, user_vectors,
+                      prediction_fn):
+    behaviors_dataset = EvaluationBehaviorsDataset(
+        f'data/{args.dataset}/{mode}.tsv', {}, index, args.num_scoring_workers)
+
+    for behaviors in behaviors_dataset:
+        candidates = behaviors['positive_candidates'] + behaviors[
+            'negative_candidates']
+        news_vector = news_vectors[candidates]
+        user_vector = user_vectors[behaviors['user_index']]
+        click_probability = prediction_fn(news_vector, user_vector)
+
+        y_pred = click_probability.tolist()
+        y_true = [1] * len(behaviors['positive_candidates']) + [0] * len(
+            behaviors['negative_candidates'])
+
+        task_queue.put((y_true, y_pred))
+
+
+def metrics_worker_fn(task_queue, result_queue):
+    for task in iter(task_queue.get, None):
+        result_queue.put(calculate_single_user_metric(task))
 
 
 @torch.no_grad()
-def evaluate(model, target, max_length=sys.maxsize):
+def evaluate(model, mode):
     """
     Args:
-        model: model to be evaluated
-        directory: the directory that contains two files (behaviors.tsv, news_parsed.tsv)
+
     Returns:
         AUC
         MRR
         nDCG@5
         nDCG@10
     """
-    assert target in ['val', 'test']
+    assert mode in ['val', 'test']
     news_dataset = NewsDataset(f'data/{args.dataset}/news.tsv')
     news_dataloader = DataLoader(news_dataset,
                                  batch_size=args.batch_size * 16,
@@ -82,7 +104,7 @@ def evaluate(model, target, max_length=sys.maxsize):
             f"News cos similarity: {calculate_cos_similarity(news_vectors.cpu().numpy()[1:]):.4f}"
         )
 
-    user_dataset = UserDataset(f'data/{args.dataset}/{target}.tsv')
+    user_dataset = UserDataset(f'data/{args.dataset}/{mode}.tsv')
     user_dataloader = DataLoader(user_dataset,
                                  batch_size=args.batch_size * 16,
                                  shuffle=False,
@@ -111,81 +133,95 @@ def evaluate(model, target, max_length=sys.maxsize):
             f"User cos similarity: {calculate_cos_similarity(user_vectors.cpu().numpy()):.4f}"
         )
 
-    behaviors_dataset = EvaluationBehaviorsDataset(
-        f'data/{args.dataset}/{target}.tsv', user_dataset.user2index)
+    behaviors_count = 0
+    for i in range(args.num_scoring_workers):
+        # Make sure the cache exists, so in `scoring_worker_fn`, the `user2index` parameter
+        # for `EvaluationBehaviorsDataset` can be empty.
+        # In this way, `user_dataset.user2index` does not to be passed to `scoring_worker_fn`,
+        # saving a lot time on pickling/unpickling
+        behaviors_count += len(
+            EvaluationBehaviorsDataset(f'data/{args.dataset}/{mode}.tsv',
+                                       user_dataset.user2index, i,
+                                       args.num_scoring_workers))
+    """
+    Evaluation with multiprocessing:
 
-    if len(behaviors_dataset) > max_length:
-        if target == 'test':
-            logger.warning(
-                'You are slicing the test dataset, the results may not be complete'
-            )
-        behaviors_dataset = Subset(behaviors_dataset, range(max_length))
+                                                  ┌──────────────────┐
+                                                  │ Metrics Worker 0 │
+                                                  └──────────────────┘
 
-    def worker_function(task_queue, result_queue):
-        results = []
-        for task in iter(task_queue.get, None):
-            result = calculate_single_user_metric(task)
-            if result is not None:
-                results.append(result)
+                                                  ┌──────────────────┐
+                                                  │ Metrics Worker 1 │
+    ┌──────────────────┐                          └──────────────────┘
+    │ Scoring Worker 0 │
+    └──────────────────┘                          ┌──────────────────┐
+                                                  │ Metrics Worker 2 │
+    ┌──────────────────┐                          └──────────────────┘
+    │ Scoring Worker 1 │       TASK QUEUE                                     RESULT QUEUE
+    └──────────────────┘   ───────────────────►   ┌──────────────────┐     ───────────────────►
+                                                  │ Metrics Worker 3 │
+    ┌──────────────────┐                          └──────────────────┘
+    │ Scoring Worker 2 │
+    └──────────────────┘                          ┌──────────────────┐
+                                                  │ Metrics Worker 4 │
+                                                  └──────────────────┘
 
-        result_queue.put((len(results), np.average(np.array(results), axis=0)))
-        result_queue.put(None)
-
+                                                  ┌──────────────────┐
+                                                  │ Metrics Worker 5 │
+                                                  └──────────────────┘
+    """
     task_queue = SimpleQueue()
     result_queue = SimpleQueue()
 
-    workers = []
-    for _ in range(args.num_workers):
-        worker = Process(target=worker_function,
+    scoring_workers = []
+
+    for i in range(args.num_scoring_workers):
+        worker = Process(target=scoring_worker_fn,
+                         args=(
+                             i,
+                             task_queue,
+                             mode,
+                             news_vectors,
+                             user_vectors,
+                             model.get_prediction,
+                         ))
+        worker.start()
+        scoring_workers.append(worker)
+
+    metrics_workers = []
+    for _ in range(args.num_metrics_workers):
+        worker = Process(target=metrics_worker_fn,
                          args=(task_queue, result_queue))
         worker.start()
-        workers.append(worker)
+        metrics_workers.append(worker)
 
+    # wait for the first result to get a more accurate progress bar :)
+    results = [result_queue.get()]
     with enlighten_manager.counter(
-            total=len(behaviors_dataset),
+            count=len(results),
+            total=behaviors_count,
             desc='Calculating metrics with multiprocessing',
             leave=False) as pbar:
-        for behaviors in behaviors_dataset:
+        while True:
+            results.append(result_queue.get())
             pbar.update()
-
-            candidates = behaviors['positive_candidates'] + behaviors[
-                'negative_candidates']
-            news_vector = news_vectors[candidates]
-            user_vector = user_vectors[behaviors['user_index']]
-            click_probability = model.get_prediction(news_vector, user_vector)
-
-            y_pred = click_probability.tolist()
-            y_true = [1] * len(behaviors['positive_candidates']) + [0] * len(
-                behaviors['negative_candidates'])
-
-            task_queue.put((y_true, y_pred))
-
-    for _ in range(args.num_workers):
-        task_queue.put(None)
-
-    results = []
-    none_count = 0
-    while True:
-        result = result_queue.get()
-        if result is None:
-            none_count += 1
-            if none_count == args.num_workers:
-                assert len(results) == args.num_workers
+            if len(results) == behaviors_count:
                 break
-        else:
-            results.append(result)
 
-    for worker in workers:
+    for worker in scoring_workers:
+        worker.join()
+    for _ in range(args.num_metrics_workers):
+        task_queue.put(None)
+    for worker in metrics_workers:
         worker.join()
 
     return dict(
         zip(['AUC', 'MRR', 'nDCG@5', 'nDCG@10'],
-            np.average(np.array(list(zip(*results))[1]),
-                       axis=0,
-                       weights=list(zip(*results))[0])))
+            np.nanmean(np.array(results), axis=0)))
 
 
 if __name__ == '__main__':
+    set_start_method('spawn')
     logger.info(args)
     logger.info(f'Using device: {device}')
     logger.info(f'Testing {args.model} on {args.dataset}')

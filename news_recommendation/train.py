@@ -7,6 +7,7 @@ import copy
 import importlib
 import random
 
+from torch.multiprocessing import set_start_method
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler, SequentialSampler, Subset
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
@@ -268,6 +269,7 @@ def train():
 
 
 if __name__ == '__main__':
+    set_start_method('spawn')
     logger.info(args)
     logger.info(f'Using device: {device}')
     logger.info(f'Training {args.model} on {args.dataset}')

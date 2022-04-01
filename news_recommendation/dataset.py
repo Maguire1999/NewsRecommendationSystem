@@ -209,7 +209,7 @@ class UserDataset(Dataset):
 
 
 class EvaluationBehaviorsDataset(Dataset):
-    def __init__(self, behaviors_path, user2index):
+    def __init__(self, behaviors_path, user2index, split_index, split_count):
         super().__init__()
         self.user_index, self.positive_candidates, self.negative_candidates = load_from_cache(
             [
@@ -218,8 +218,10 @@ class EvaluationBehaviorsDataset(Dataset):
                 args.num_history,
                 args.dataset_attributes['behaviors'],
                 behaviors_path,
+                f'{split_index} of {split_count}',
             ],
-            lambda: self._process_behaviors(behaviors_path, user2index),
+            lambda: self._process_behaviors(behaviors_path, user2index,
+                                            split_index, split_count),
             args.cache_dir,
             args.cache_dataset,
             lambda x: logger.info(f'Load evaluating behaviors cache from {x}'),
@@ -238,9 +240,11 @@ class EvaluationBehaviorsDataset(Dataset):
         return item
 
     @staticmethod
-    def _process_behaviors(behaviors_path, user2index):
+    def _process_behaviors(behaviors_path, user2index, split_index,
+                           split_count):
         behaviors = pd.read_table(behaviors_path,
                                   usecols=args.dataset_attributes['behaviors'])
+        behaviors = np.array_split(behaviors, split_count)[split_index]
 
         columns = list(behaviors.columns)
         for x in ['positive_candidates', 'negative_candidates']:
