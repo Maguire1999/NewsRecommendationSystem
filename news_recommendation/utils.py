@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import sys
 
 from pathlib import Path
+from torch.multiprocessing import current_process
 
 
 def time_since(since):
@@ -28,15 +29,17 @@ def create_logger(args):
     coloredlogs.install(level='INFO',
                         logger=logger,
                         fmt='%(asctime)s %(levelname)s %(message)s')
-    log_dir = os.path.join(args.log_dir, f'{args.model}-{args.dataset}')
-    os.makedirs(log_dir, exist_ok=True)
-    log_file_path = os.path.join(
-        log_dir,
-        f"{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}.txt"
-    )
-    logger.info(f'Check {log_file_path} for the log of this run')
-    file_handler = logging.FileHandler(log_file_path)
-    logger.addHandler(file_handler)
+    if current_process().name == 'MainProcess':
+        # Skip logging to file in child processes
+        log_dir = os.path.join(args.log_dir, f'{args.model}-{args.dataset}')
+        os.makedirs(log_dir, exist_ok=True)
+        log_file_path = os.path.join(
+            log_dir,
+            f"{datetime.datetime.now().replace(microsecond=0).isoformat()}{'-' + os.environ['REMARK'] if 'REMARK' in os.environ else ''}.txt"
+        )
+        logger.info(f'Check {log_file_path} for the log of this run')
+        file_handler = logging.FileHandler(log_file_path)
+        logger.addHandler(file_handler)
 
     class ExitingHandler(logging.Handler):
         def emit(self, record):
