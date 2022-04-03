@@ -5,15 +5,14 @@ class DotProductClickPredictor(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, candidate_news_vector, user_vector):
+    def forward(self, candidates_vector, user_vector):
         """
         Args:
-            candidate_news_vector: batch_size, candidate_size, X
-            user_vector: batch_size, X
+            candidates_vector: ..., X
+            user_vector: ..., X
         Returns:
-            (shape): batch_size, candidate_size
+            (shape): ...
         """
-        # batch_size, candidate_size
-        probability = torch.bmm(candidate_news_vector,
-                                user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)
+        # ...
+        probability = (candidates_vector * user_vector).sum(dim=-1)
         return probability

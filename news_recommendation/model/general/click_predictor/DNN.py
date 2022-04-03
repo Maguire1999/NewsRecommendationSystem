@@ -16,14 +16,14 @@ class DNNClickPredictor(torch.nn.Module):
             nn.Linear(hidden_size, 1),
         )
 
-    def forward(self, candidate_news_vector, user_vector):
+    def forward(self, candidates_vector, user_vector):
         """
         Args:
-            candidate_news_vector: batch_size, X
+            candidates_vector: batch_size, X
             user_vector: batch_size, X
         Returns:
             (shape): batch_size
         """
         # batch_size
-        return self.dnn(torch.cat((candidate_news_vector, user_vector),
+        return self.dnn(torch.cat((candidates_vector, user_vector),
                                   dim=1)).squeeze(dim=1)

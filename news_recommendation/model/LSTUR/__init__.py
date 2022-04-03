@@ -67,7 +67,7 @@ class LSTUR(torch.nn.Module):
         import ipdb
         ipdb.set_trace()
         # batch_size, 1 + K, num_filters * 3
-        candidate_news_vector = torch.stack(
+        candidates_vector = torch.stack(
             [self.news_encoder(x) for x in candidate_news], dim=1)
         # ini: batch_size, num_filters * 3
         # con: batch_size, num_filters * 1.5
@@ -81,8 +81,9 @@ class LSTUR(torch.nn.Module):
         user_vector = self.user_encoder(user, clicked_news_length,
                                         history_vector)
         # batch_size, 1 + K
-        click_probability = self.click_predictor(candidate_news_vector,
-                                                 user_vector)
+        click_probability = self.click_predictor(
+            candidates_vector,
+            user_vector.unsqueeze(dim=1).expand_as(candidates_vector))
         return click_probability
 
     def get_news_vector(self, news):
@@ -113,6 +114,5 @@ class LSTUR(torch.nn.Module):
             click_probability: candidate_size
         """
         # candidate_size
-        return self.click_predictor(
-            news_vector.unsqueeze(dim=0),
-            user_vector.unsqueeze(dim=0)).squeeze(dim=0)
+        return self.click_predictor(news_vector,
+                                    user_vector.expand_as(news_vector))

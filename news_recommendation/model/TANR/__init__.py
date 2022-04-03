@@ -42,7 +42,7 @@ class TANR(torch.nn.Module):
             topic_classification_loss: 0-dim tensor
         """
         # batch_size, 1 + K, num_filters
-        candidate_news_vector = torch.stack(
+        candidates_vector = torch.stack(
             [self.news_encoder(x) for x in candidate_news], dim=1)
         # batch_size, num_history, num_filters
         history_vector = torch.stack(
@@ -50,12 +50,13 @@ class TANR(torch.nn.Module):
         # batch_size, num_filters
         user_vector = self.user_encoder(history_vector)
         # batch_size, 1 + K
-        click_probability = self.click_predictor(candidate_news_vector,
-                                                 user_vector)
+        click_probability = self.click_predictor(
+            candidates_vector,
+            user_vector.unsqueeze(dim=1).expand_as(candidates_vector))
 
         # batch_size * (1 + K + num_history), num_categories
         y_pred = self.topic_predictor(
-            torch.cat((candidate_news_vector, history_vector),
+            torch.cat((candidates_vector, history_vector),
                       dim=1).view(-1, args.num_filters))
         # batch_size * (1 + K + num_history)
         y = torch.stack([x['category'] for x in candidate_news + clicked_news],
@@ -99,6 +100,5 @@ class TANR(torch.nn.Module):
             click_probability: candidate_size
         """
         # candidate_size
-        return self.click_predictor(
-            news_vector.unsqueeze(dim=0),
-            user_vector.unsqueeze(dim=0)).squeeze(dim=0)
+        return self.click_predictor(news_vector,
+                                    user_vector.expand_as(news_vector))

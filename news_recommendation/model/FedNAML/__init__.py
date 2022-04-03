@@ -1,6 +1,6 @@
 from news_recommendation.model.general.trainer.federated import FederatedModel
-from news_recommendation.model.NRMS import _NRMS
+from news_recommendation.model.NAML import _NAML
 
 
-class FedNRMS(_NRMS, FederatedModel):
+class FedNAML(_NAML, FederatedModel):
     pass

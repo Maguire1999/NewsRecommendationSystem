@@ -7,7 +7,7 @@ from news_recommendation.model.general.trainer.centralized import CentralizedMod
 from news_recommendation.shared import args
 
 
-class NRMS(torch.nn.Module, CentralizedModel):
+class _NRMS(torch.nn.Module):
     """
     NRMS network.
     """
@@ -50,8 +50,9 @@ class NRMS(torch.nn.Module, CentralizedModel):
         # batch_size, word_embedding_dim
         user_vector = self.user_encoder(history_vector)
         # batch_size, 1 + K
-        click_probability = self.click_predictor(candidates_vector,
-                                                 user_vector)
+        click_probability = self.click_predictor(
+            candidates_vector,
+            user_vector.unsqueeze(dim=1).expand_as(candidates_vector))
         return click_probability
 
     def get_news_vector(self, news, news_pattern):
@@ -74,8 +75,7 @@ class NRMS(torch.nn.Module, CentralizedModel):
         # batch_size, word_embedding_dim
         return self.user_encoder(history_vector)
 
-    @staticmethod
-    def get_prediction(news_vector, user_vector):
+    def get_prediction(self, news_vector, user_vector):
         """
         Args:
             news_vector: candidate_size, word_embedding_dim
@@ -84,5 +84,9 @@ class NRMS(torch.nn.Module, CentralizedModel):
             click_probability: candidate_size
         """
         # candidate_size
-        return torch.mm(news_vector,
-                        user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)
+        return self.click_predictor(news_vector,
+                                    user_vector.expand_as(news_vector))
+
+
+class NRMS(_NRMS, CentralizedModel):
+    pass

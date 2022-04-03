@@ -14,10 +14,11 @@ def str2bool(x):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model',
-                        type=str,
-                        default='NRMS',
-                        choices=['NRMS', 'NAML', 'LSTUR', 'TANR', 'FedNRMS'])
+    parser.add_argument(
+        '--model',
+        type=str,
+        default='NRMS',
+        choices=['NRMS', 'NAML', 'LSTUR', 'TANR', 'FedNRMS', 'FedNAML'])
     parser.add_argument('--loss',
                         type=str,
                         default='CE',
@@ -114,6 +115,11 @@ def parse_args():
         },
         'FedNRMS': {
             'news': ['title'],
+            'behaviors':
+            ['user', 'history', 'positive_candidates', 'negative_candidates']
+        },
+        'FedNAML': {
+            'news': ['category', 'subcategory', 'title', 'abstract'],
             'behaviors':
             ['user', 'history', 'positive_candidates', 'negative_candidates']
         },

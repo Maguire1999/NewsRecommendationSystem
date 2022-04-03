@@ -7,7 +7,7 @@ from news_recommendation.model.general.trainer.centralized import CentralizedMod
 from news_recommendation.shared import args
 
 
-class NAML(torch.nn.Module, CentralizedModel):
+class _NAML(torch.nn.Module, CentralizedModel):
     """
     NAML network.
     Input 1 + K candidate news and a list of user clicked news, produce the click probability.
@@ -51,8 +51,9 @@ class NAML(torch.nn.Module, CentralizedModel):
         # batch_size, word_embedding_dim
         user_vector = self.user_encoder(history_vector)
         # batch_size, 1 + K
-        click_probability = self.click_predictor(candidates_vector,
-                                                 user_vector)
+        click_probability = self.click_predictor(
+            candidates_vector,
+            user_vector.unsqueeze(dim=1).expand_as(candidates_vector))
         return click_probability
 
     def get_news_vector(self, news, news_pattern):
@@ -84,6 +85,9 @@ class NAML(torch.nn.Module, CentralizedModel):
             click_probability: candidate_size
         """
         # candidate_size
-        return self.click_predictor(
-            news_vector.unsqueeze(dim=0),
-            user_vector.unsqueeze(dim=0)).squeeze(dim=0)
+        return self.click_predictor(news_vector,
+                                    user_vector.expand_as(news_vector))
+
+
+class NAML(_NAML, CentralizedModel):
+    pass
