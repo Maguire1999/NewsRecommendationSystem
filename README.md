@@ -1,7 +1,7 @@
 # News Recommendation
 
 ## Presentation
-
+![](demo/Web.png)
 <video src="demo/demo.mp4" width="600px" height="600px" controls="controls"></video>
 
 
