@@ -118,3 +118,14 @@ tensorboard --logdir=runs/{model_name}
 cd ..
 python3 src/web.py
 ```
+## Citation
+```
+@misc{yusanshi2020news-recommendation,
+  title={news-recommendation},
+  author={yusanshi},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished={\url{https://github.com/yusanshi/news-recommendation}},
+  year={2020}
+}
+```
