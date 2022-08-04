@@ -1,0 +1,1 @@
+[{"value": 4, "name": "news"}, {"value": 2, "name": "travel"}, {"value": 4, "name": "finance"}, {"value": 1, "name": "music"}, {"value": 1, "name": "weather"}, {"value": 2, "name": "health"}, {"value": 3, "name": "lifestyle"}, {"news": 4, "travel": 2, "finance": 4, "music": 1, "weather": 1, "health": 2, "lifestyle": 3}]
