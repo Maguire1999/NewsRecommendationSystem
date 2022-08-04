@@ -1,0 +1,31 @@
+
+lpython:S1192÷"NDefine a constant instead of duplicating this literal 'behaviors.tsv' 3 times.(·§‚íûÿÿÿÿ
+_python:S2208"GImport only needed names or import the module and then use its members.(É™ùÖ
+_python:S2208"GImport only needed names or import the module and then use its members.(þ”ä 
+_python:S2208"GImport only needed names or import the module and then use its members.(Ö§›à
+_python:S2208"GImport only needed names or import the module and then use its members.(„åØŒ
+;python:S125"Remove this commented out code.(”ÅÜÇûÿÿÿÿ
+Tpython:S5754k"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+;python:S125j"Remove this commented out code.(’Ëªïøÿÿÿÿ
+Upython:S5754¦"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+Opython:S1481Â"6Remove the unused local variable "candidate_news_id_".(¤êˆõ
+Gpython:S1481£")Remove the unused local variable "tasks".(‡•£þÿÿÿÿ
+Fpython:S1481®"(Remove the unused local variable "test".(Ë¿ƒùøÿÿÿÿ
+lpython:S3776Æ"TRefactor this function to reduce its Cognitive Complexity from 41 to the 15 allowed.(¥§§F
+Upython:S5754Ú"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+<python:S125ü"Remove this commented out code.(ÅòÈ³ÿÿÿÿÿ
+7python:S125ª"Remove this commented out code.(ª·’
+Upython:S5754³"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+7python:S125±"Remove this commented out code.(¤ººå
+Upython:S5754Æ"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+<python:S125½"Remove this commented out code.(Ë–°Îýÿÿÿÿ
+<python:S125¿"Remove this commented out code.(Žç‹µøÿÿÿÿ
+<python:S125Ä"Remove this commented out code.(Ô«Çùÿÿÿÿ
+<python:S125Ç"Remove this commented out code.(Žç‹µøÿÿÿÿ
+Apython:S5603Í"(Remove this unused function declaration.(¯“×Ó
+7python:S125×"Remove this commented out code.(ÆÔœ¦
+7python:S125Û"Remove this commented out code.(Õè˜ö
+Apython:S108ä")Either remove or fill this block of code.(ã‘Û¾
+Apython:S108é")Either remove or fill this block of code.(ã‘Û¾
+Upython:S5754ù"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+7python:S125"Remove this commented out code.(›ƒ¼…

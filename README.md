@@ -1,6 +1,9 @@
 # News Recommendation
 
-The repository currently includes the following models.
+<video src="demo/demo.mp4" width="600px" height="600px" controls="controls"></video>
+
+
+\The repository currently includes the following models.
 
 **Models in published papers**
 
