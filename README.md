@@ -118,7 +118,7 @@ tensorboard --logdir=runs/{model_name}
 cd ..
 python3 src/web.py
 ```
-## Citation
+## Acknowledge
 ```
 @misc{yusanshi2020news-recommendation,
   title={news-recommendation},
@@ -127,5 +127,17 @@ python3 src/web.py
   journal = {GitHub repository},
   howpublished={\url{https://github.com/yusanshi/news-recommendation}},
   year={2020}
+}
+```
+
+## Citation
+```
+@misc{Maguire2022news-recommendation,
+  title={news-recommendation-system},
+  author={Maguire},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished={\url{https://github.com/Maguire1999/NewsRecommendationSystem}},
+  year={2022}
 }
 ```
